@@ -1,6 +1,6 @@
 {
   "name": "better-model",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Stop sending grep to Opus. Evidence-based model selection for Claude Code — up to 40% faster AI responses, same quality.",
   "type": "module",
   "bin": {

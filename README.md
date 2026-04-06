@@ -23,6 +23,7 @@ This places a `BETTER-MODEL.md` file in your project's `docs/` directory and add
 | Command | Description |
 |---|---|
 | `npx better-model init` | Install the decision matrix into your project |
+| `npx better-model audit` | Check `.claude/agents/` for missing model settings |
 | `npx better-model reset` | Remove better-model and restore defaults |
 | `npx better-model status` | Check current installation status |
 | `npx better-model --help` | Show help |

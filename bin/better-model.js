@@ -26,6 +26,7 @@ Commands:
   init      Install decision matrix into your project
   reset     Remove better-model and restore defaults
   status    Show current installation status
+  audit     Check .claude/agents/ and skills for missing model settings
 
 Options:
   --help    Show this help message
@@ -57,6 +58,11 @@ async function main() {
     case "status": {
       const { status } = await import("../src/status.js");
       status(projectRoot);
+      break;
+    }
+    case "audit": {
+      const { audit } = await import("../src/audit.js");
+      audit(projectRoot);
       break;
     }
     case "--version":

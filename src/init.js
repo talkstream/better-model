@@ -52,4 +52,7 @@ export function init(projectRoot) {
 
   console.log("\n✓ better-model installed successfully.");
   console.log("  Claude Code will now use the decision matrix for model selection.");
+  console.log(`\n  Next steps:`);
+  console.log(`  1. git add ${docsDir}/${TEMPLATE_FILE} ${CLAUDE_MD}`);
+  console.log(`  2. npx better-model audit  — check your agents for missing model settings`);
 }

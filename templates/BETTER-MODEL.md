@@ -85,6 +85,42 @@ Reserve Opus for tasks where cheaper models have documented failure modes.
 
 ---
 
+## Agent Frontmatter Examples
+
+Copy-paste these into your `.claude/agents/*.md` files to set model and effort per agent:
+
+```yaml
+# For code review agents (Tier 2 — Sonnet)
+---
+model: sonnet
+effort: high
+---
+
+# For search/exploration agents (Tier 1 — Haiku)
+---
+model: haiku
+effort: low
+---
+
+# For security/architecture agents (Tier 3 — Opus)
+---
+model: opus
+effort: max
+---
+```
+
+Run `npx better-model audit` to check which agents are missing `model:` settings.
+
+## Session Model Guidance
+
+The matrix above applies to **subagents**. For your own session model:
+
+- If your current task is **Tier 2** work (feature implementation, tests, refactoring 1–2 files) and you're on Opus, consider switching: `/model sonnet`
+- If you hit a **Tier 3** problem (architecture, multi-file debugging, security), switch back: `/model opus`
+- Check your current model anytime: `/model`
+
+---
+
 ## Anti-Patterns to Avoid
 
 | Anti-pattern | Why it fails | Do this instead |
