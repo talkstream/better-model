@@ -1,10 +1,14 @@
 # better-model
 
+> **Stop sending grep to Opus.** Same quality — up to 40% faster AI responses.
+
 Evidence-based model and effort selection for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
-Claude Code users on Max and Team Premium plans default to Opus 4.6 for every task — including file searches, grep operations, and simple questions. Real-world data shows that **93.8% of tokens go to Opus unnecessarily** ([#27665](https://github.com/anthropics/claude-code/issues/27665)). Sonnet 4.6 delivers 98% of Opus's coding quality ([SWE-bench](https://www.swebench.com): 79.6% vs 80.9%) at 40–60% faster speed.
+Claude Code users on Max and Team Premium plans default to Opus 4.6 for every task — including file searches, grep operations, and simple questions. Real-world data shows that **93.8% of tokens go to Opus unnecessarily** ([#27665](https://github.com/anthropics/claude-code/issues/27665)). Yet Sonnet 4.6 delivers 98% of Opus's coding quality ([SWE-bench](https://www.swebench.com): 79.6% vs 80.9%).
 
-**better-model** installs a research-backed decision matrix into your project that teaches Claude Code when to use Opus, Sonnet, or Haiku — and at which effort level.
+By routing tasks to the right model, **better-model** cuts AI response times by ~30% on average (up to 40%) while maintaining full quality on the tasks that matter.
+
+**How?** It installs a research-backed decision matrix into your project that teaches Claude Code when to use Opus, Sonnet, or Haiku — and at which effort level. No proxies, no hooks — just a `.md` file Claude reads.
 
 ## Quick start
 

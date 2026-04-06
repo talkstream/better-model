@@ -6,15 +6,15 @@
 
 ---
 
-## Current Models at a Glance
+## Current Models at a Glance (April 2026)
 
-| Model | Speed | SWE-bench | GPQA Diamond | Best for |
-|---|---|---|---|---|
-| **Opus 4.6** | ~39 tok/s | 80.9% | 91.3% | Architecture, security, novel problems, large context |
-| **Sonnet 4.6** | ~55 tok/s | 79.6% | 74.1% | General coding, tests, reviews, refactoring (1–2 files) |
-| **Haiku 4.5** | ~90 tok/s | — | — | Search, exploration, pattern matching |
+| Model | Relative speed | SWE-bench | GPQA Diamond | Rate limit (TPM) | Best for |
+|---|---|---|---|---|---|
+| **Opus 4.6** | baseline | 80.9% | 91.3% | 30K | Architecture, security, novel problems, large context |
+| **Sonnet 4.6** | ~1.4x faster | 79.6% | 74.1% | 90K | General coding, tests, reviews, refactoring (1–2 files) |
+| **Haiku 4.5** | ~2x faster | — | — | 100K | Search, exploration, pattern matching |
 
-**Key insight**: Sonnet delivers 98% of Opus's coding performance at 40–60% faster speed. The real gap is in expert-level reasoning (GPQA: 17.2 points) and novel problem-solving (ARC-AGI-2: 10.5 points) — not in everyday coding.
+**Key insight**: Sonnet delivers 98% of Opus's coding performance with faster responses and 3x the rate limit headroom. The real gap is in expert-level reasoning (GPQA: 17.2 points) and novel problem-solving (ARC-AGI-2: 10.5 points) — not in everyday coding. By routing ~80% of tasks away from Opus, you can expect **~30% faster AI responses on average (up to 40%)** with no quality loss on coding tasks.
 
 ---
 
