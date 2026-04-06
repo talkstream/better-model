@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getInstallStatus, CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER } from "./detect.js";
+import { fix, printFixResults } from "./fix.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_SRC = join(__dirname, "..", "templates", TEMPLATE_FILE);
@@ -11,16 +12,26 @@ const REFERENCE_LINE = `\n→ **[Model Selection Guide](docs/${TEMPLATE_FILE})**
 /**
  * Install better-model into the target project.
  * @param {string} projectRoot
+ * @param {{ soft?: boolean }} options
  */
-export function init(projectRoot) {
+export function init(projectRoot, options = {}) {
+  const { soft = false } = options;
   const status = getInstallStatus(projectRoot);
 
   if (status.installed) {
     console.log("✓ better-model is already installed.");
     console.log(`  Template: ${status.templatePath}`);
     console.log(`  Reference in: ${status.claudeMdPath}`);
+    if (!soft) {
+      console.log("\n  Running enforcement check on agents/skills...");
+      const results = fix(projectRoot);
+      printFixResults(results, false);
+    }
     return;
   }
+
+  const mode = soft ? "soft" : "enforcement";
+  console.log(`  Mode: ${mode}`);
 
   // Ensure docs directory exists
   const docsDir = status.docsDir;
@@ -50,9 +61,26 @@ export function init(projectRoot) {
     console.log(`  Created ${CLAUDE_MD} with reference`);
   }
 
-  console.log("\n✓ better-model installed successfully.");
-  console.log("  Claude Code will now use the decision matrix for model selection.");
+  // Enforcement mode: inject model frontmatter into agents/skills
+  if (!soft) {
+    const results = fix(projectRoot);
+    if (results.fixed.length > 0 || results.skipped.length > 0) {
+      console.log("\n  Enforcement — injecting model frontmatter:");
+      printFixResults(results, false);
+    }
+  }
+
+  console.log("✓ better-model installed successfully.");
+  if (soft) {
+    console.log("  Mode: soft — decision matrix as reference only.");
+  } else {
+    console.log("  Mode: enforcement — model frontmatter injected into agents/skills.");
+  }
   console.log(`\n  Next steps:`);
   console.log(`  1. git add ${docsDir}/${TEMPLATE_FILE} ${CLAUDE_MD}`);
-  console.log(`  2. npx better-model audit  — check your agents for missing model settings`);
+  if (soft) {
+    console.log(`  2. npx better-model audit  — check agents for missing model settings`);
+  } else {
+    console.log(`  2. npx better-model audit  — verify all agents have model settings`);
+  }
 }

@@ -16,18 +16,27 @@ By routing tasks to the right model, **better-model** cuts AI response times by 
 npx better-model init
 ```
 
-This places a `BETTER-MODEL.md` file in your project's `docs/` directory and adds a single reference line to your `CLAUDE.md`. Claude Code reads the matrix on every session and routes subagents accordingly.
+This does two things:
+
+1. **Reference** — places `BETTER-MODEL.md` in your `docs/` and adds a link in `CLAUDE.md`
+2. **Enforcement** — scans `.claude/agents/` and `.claude/skills/`, injects `model:` and `effort:` frontmatter based on each agent's purpose
+
+For reference-only mode (no frontmatter changes):
+
+```bash
+npx better-model init --soft
+```
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `npx better-model init` | Install the decision matrix into your project |
+| `npx better-model init` | **Enforcement** (default) — matrix + inject model frontmatter |
+| `npx better-model init --soft` | **Soft** — matrix as reference only, no frontmatter changes |
 | `npx better-model audit` | Check `.claude/agents/` for missing model settings |
+| `npx better-model audit --fix` | Auto-inject model frontmatter into agents and skills |
 | `npx better-model reset` | Remove better-model and restore defaults |
 | `npx better-model status` | Check current installation status |
-| `npx better-model --help` | Show help |
-| `npx better-model --version` | Show version |
 
 ## The algorithm
 

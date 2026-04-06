@@ -1,12 +1,25 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getInstallStatus } from "./detect.js";
+import { fix, printFixResults } from "./fix.js";
 
 /**
  * Scan .claude/agents/ and .claude/skills/ for missing model/effort frontmatter.
  * @param {string} projectRoot
+ * @param {{ fix: boolean }} options
  */
-export function audit(projectRoot) {
+export function audit(projectRoot, options = {}) {
+  if (options.fix) {
+    const status = getInstallStatus(projectRoot);
+    if (!status.installed) {
+      console.log("✗ better-model is not installed. Run 'npx better-model init' first.");
+      return;
+    }
+    console.log("Fixing .claude/ agents & skills — injecting model frontmatter...\n");
+    const results = fix(projectRoot);
+    printFixResults(results, false);
+    return;
+  }
   const status = getInstallStatus(projectRoot);
   if (!status.installed) {
     console.log("✗ better-model is not installed. Run 'npx better-model init' first.");
@@ -80,7 +93,7 @@ export function audit(projectRoot) {
     console.log("✓ All agents have model configuration.");
   } else {
     console.log(`⚠ ${issues} agent(s) missing model or effort settings.`);
-    console.log("  See docs/BETTER-MODEL.md → 'Agent Frontmatter Examples' for copy-paste snippets.");
+    console.log("  Run 'npx better-model audit --fix' to auto-inject model frontmatter.");
   }
 }
 
