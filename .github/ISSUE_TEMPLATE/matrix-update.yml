@@ -1,0 +1,25 @@
+name: Matrix Update
+description: New benchmark data or model routing suggestion
+labels: [matrix-update]
+body:
+  - type: textarea
+    id: claim
+    attributes:
+      label: What should change in the decision matrix?
+      description: Which tier, task type, or rule needs updating?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link to benchmark results, published study, or reproducible example.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Which tier/task/rule is affected and how?
+    validations:
+      required: true

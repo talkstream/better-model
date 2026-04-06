@@ -1,7 +1,7 @@
 {
   "name": "better-model",
-  "version": "0.3.0",
-  "description": "Stop sending grep to Opus. Evidence-based model selection for Claude Code — up to 40% faster AI responses, same quality.",
+  "version": "0.3.1",
+  "description": "Stop waiting for Opus on every grep — routes 80% of tasks to faster models with zero quality loss. One command, zero dependencies.",
   "type": "module",
   "bin": {
     "better-model": "bin/better-model.js"
@@ -17,7 +17,14 @@
     "sonnet",
     "haiku",
     "ai",
-    "developer-tools"
+    "developer-tools",
+    "anthropic",
+    "cli",
+    "model-routing",
+    "llm",
+    "code-assistant",
+    "productivity",
+    "claude-code-plugin"
   ],
   "author": "talkstream",
   "license": "MIT",
