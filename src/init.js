@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getInstallStatus, CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER } from "./detect.js";
 import { fix, printFixResults } from "./fix.js";
+import { gitAdd, isGitRepo } from "./git.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_SRC = join(__dirname, "..", "templates", TEMPLATE_FILE);
@@ -17,6 +18,7 @@ const REFERENCE_LINE = `\n→ **[Model Selection Guide](docs/${TEMPLATE_FILE})**
 export function init(projectRoot, options = {}) {
   const { soft = false } = options;
   const status = getInstallStatus(projectRoot);
+  const touchedFiles = [];
 
   if (status.installed) {
     console.log("✓ better-model is already installed.");
@@ -26,6 +28,8 @@ export function init(projectRoot, options = {}) {
       console.log("\n  Running enforcement check on agents/skills...");
       const results = fix(projectRoot);
       printFixResults(results, false);
+      for (const f of results.fixed) touchedFiles.push(f.file);
+      stageFiles(projectRoot, touchedFiles);
     }
     return;
   }
@@ -42,11 +46,13 @@ export function init(projectRoot, options = {}) {
   }
 
   // Copy template
+  const templateRel = `${docsDir}/${TEMPLATE_FILE}`;
   const destPath = join(docsDirAbs, TEMPLATE_FILE);
   if (!existsSync(destPath)) {
     copyFileSync(TEMPLATE_SRC, destPath);
-    console.log(`  Copied ${docsDir}/${TEMPLATE_FILE}`);
+    console.log(`  Copied ${templateRel}`);
   }
+  touchedFiles.push(templateRel);
 
   // Add reference to CLAUDE.md
   const claudeMdPath = join(projectRoot, CLAUDE_MD);
@@ -60,6 +66,7 @@ export function init(projectRoot, options = {}) {
     writeFileSync(claudeMdPath, REFERENCE_LINE.trimStart());
     console.log(`  Created ${CLAUDE_MD} with reference`);
   }
+  touchedFiles.push(CLAUDE_MD);
 
   // Enforcement mode: inject model frontmatter into agents/skills
   if (!soft) {
@@ -68,7 +75,11 @@ export function init(projectRoot, options = {}) {
       console.log("\n  Enforcement — injecting model frontmatter:");
       printFixResults(results, false);
     }
+    for (const f of results.fixed) touchedFiles.push(f.file);
   }
+
+  // Auto git-add all touched files
+  const staged = stageFiles(projectRoot, touchedFiles);
 
   console.log("✓ better-model installed successfully.");
   if (soft) {
@@ -76,11 +87,26 @@ export function init(projectRoot, options = {}) {
   } else {
     console.log("  Mode: enforcement — model frontmatter injected into agents/skills.");
   }
-  console.log(`\n  Next steps:`);
-  console.log(`  1. git add ${docsDir}/${TEMPLATE_FILE} ${CLAUDE_MD}`);
-  if (soft) {
-    console.log(`  2. npx better-model audit  — check agents for missing model settings`);
-  } else {
-    console.log(`  2. npx better-model audit  — verify all agents have model settings`);
+
+  if (staged.length === 0 && isGitRepo(projectRoot)) {
+    console.log(`\n  Next: git add ${templateRel} ${CLAUDE_MD}`);
   }
+}
+
+/**
+ * Stage files and print what was staged.
+ * @param {string} projectRoot
+ * @param {string[]} files
+ * @returns {string[]}
+ */
+function stageFiles(projectRoot, files) {
+  if (files.length === 0) return [];
+  const staged = gitAdd(projectRoot, files);
+  if (staged.length > 0) {
+    console.log(`\n  Staged ${staged.length} file(s) in git:`);
+    for (const f of staged) {
+      console.log(`    + ${f}`);
+    }
+  }
+  return staged;
 }

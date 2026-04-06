@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getInstallStatus } from "./detect.js";
 import { fix, printFixResults } from "./fix.js";
+import { gitAdd } from "./git.js";
 
 /**
  * Scan .claude/agents/ and .claude/skills/ for missing model/effort frontmatter.
@@ -18,6 +19,14 @@ export function audit(projectRoot, options = {}) {
     console.log("Fixing .claude/ agents & skills — injecting model frontmatter...\n");
     const results = fix(projectRoot);
     printFixResults(results, false);
+
+    // Auto git-add fixed files
+    const files = results.fixed.map((f) => f.file);
+    const staged = gitAdd(projectRoot, files);
+    if (staged.length > 0) {
+      console.log(`  Staged ${staged.length} file(s) in git:`);
+      for (const f of staged) console.log(`    + ${f}`);
+    }
     return;
   }
   const status = getInstallStatus(projectRoot);

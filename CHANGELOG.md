@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0] - 2026-04-07
+
+### Added
+- **Auto git-add**: `init` and `audit --fix` now automatically stage all created/modified files in git
+- Solves the observed pattern where `.claude/` model configs and `docs/BETTER-MODEL.md` were forgotten across 3 consecutive commits in a real Claude Code session
+
+### Changed
+- `init` no longer prints "Next: git add..." when files are already staged
+- `audit --fix` stages fixed files automatically
+
+## [0.3.1] - 2026-04-07
+
+### Changed
+- README rewrite: "Stop waiting for Opus on every grep" tagline, badges, speed-first structure
+- GitHub Actions CI (Node 18/20/22), issue templates, CHANGELOG, SECURITY.md
+- npm keywords expanded to 15
+
 ## [0.3.0] - 2026-04-07
 
 ### Added
