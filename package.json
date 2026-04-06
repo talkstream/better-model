@@ -1,0 +1,40 @@
+{
+  "name": "better-model",
+  "version": "0.1.0",
+  "description": "Evidence-based model & effort selection for Claude Code — install a decision matrix that teaches Claude when to use Opus, Sonnet, or Haiku",
+  "type": "module",
+  "bin": {
+    "better-model": "./bin/better-model.js"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "model-selection",
+    "opus",
+    "sonnet",
+    "haiku",
+    "ai",
+    "developer-tools"
+  ],
+  "author": "talkstream",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/talkstream/better-model.git"
+  },
+  "bugs": {
+    "url": "https://github.com/talkstream/better-model/issues"
+  },
+  "homepage": "https://github.com/talkstream/better-model#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "templates/"
+  ]
+}
