@@ -4,7 +4,7 @@
   "description": "Evidence-based model & effort selection for Claude Code — install a decision matrix that teaches Claude when to use Opus, Sonnet, or Haiku",
   "type": "module",
   "bin": {
-    "better-model": "./bin/better-model.js"
+    "better-model": "bin/better-model.js"
   },
   "scripts": {
     "test": "node --test test/"
