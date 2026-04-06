@@ -20,7 +20,7 @@ git clone https://github.com/talkstream/better-model.git
 cd better-model
 
 # Run tests
-node --test test/detect.test.js test/init.test.js test/reset.test.js
+node --test 'test/*.test.js'
 
 # Test the CLI locally
 node bin/better-model.js --help
@@ -38,7 +38,7 @@ node bin/better-model.js --help
 Tests use the Node.js built-in test runner (`node:test`). No external test framework required.
 
 ```bash
-node --test test/detect.test.js test/init.test.js test/reset.test.js
+node --test 'test/*.test.js'
 ```
 
 ## Code of conduct

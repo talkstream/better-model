@@ -17,4 +17,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - run: node --test test/detect.test.js test/init.test.js test/reset.test.js test/audit.test.js test/fix.test.js
+      - run: node --test 'test/*.test.js'
