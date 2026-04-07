@@ -42,6 +42,19 @@ export function init(projectRoot, options = {}) {
     console.log("✓ better-model is already installed.");
     console.log(`  Template: ${status.templatePath}`);
     console.log(`  Reference in: ${status.claudeMdPath}`);
+
+    // Upgrade v0.4.0 single-line reference to v0.5.0 routing block
+    const claudeMdPath = join(projectRoot, CLAUDE_MD);
+    if (existsSync(claudeMdPath)) {
+      let content = readFileSync(claudeMdPath, "utf8");
+      if (!content.includes(BLOCK_START) && content.includes(OLD_REFERENCE_LINE)) {
+        content = content.replace(OLD_REFERENCE_LINE, ROUTING_BLOCK);
+        writeFileSync(claudeMdPath, content);
+        touchedFiles.push(CLAUDE_MD);
+        console.log("  Upgraded CLAUDE.md reference to routing block.");
+      }
+    }
+
     if (!soft) {
       // Ensure agents are installed (idempotent)
       const agentResult = installAgents(projectRoot);

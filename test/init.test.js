@@ -1,9 +1,13 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, copyFileSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { init } from "../src/init.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const templateSrc = join(__dirname, "..", "templates", "BETTER-MODEL.md");
 
 describe("init", () => {
   let tmp;
@@ -86,5 +90,20 @@ describe("init", () => {
     assert.ok(content.includes("<!-- better-model:start -->"));
     assert.ok(content.includes("<!-- better-model:end -->"));
     assert.ok(content.includes("CRITICAL"));
+  });
+
+  it("upgrades v0.4.0 reference to routing block on re-init", () => {
+    // Simulate v0.4.0 install: template + old single-line reference
+    mkdirSync(join(tmp, "docs"), { recursive: true });
+    copyFileSync(templateSrc, join(tmp, "docs", "BETTER-MODEL.md"));
+    const oldRef = '→ **[Model Selection Guide](docs/BETTER-MODEL.md)** — when to use Opus/Sonnet/Haiku and effort levels';
+    writeFileSync(join(tmp, "CLAUDE.md"), `# Project\n\nSome rules.\n\n${oldRef}\n`);
+
+    init(tmp);
+
+    const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+    assert.ok(content.includes("<!-- better-model:start -->"), "should have routing block");
+    assert.ok(!content.includes(oldRef), "should not have old reference line");
+    assert.ok(content.includes("Some rules."), "should preserve other content");
   });
 });

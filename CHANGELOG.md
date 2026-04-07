@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.5.1] - 2026-04-07
+
+### Fixed
+- **Auto-upgrade**: `init` on v0.4.0 projects now upgrades the single-line CLAUDE.md reference to the routing block automatically — no `reset` needed
+
 ## [0.5.0] - 2026-04-07
 
 ### Added
