@@ -26,8 +26,8 @@ node bin/better-model.js reset
 ```
 bin/better-model.js   Entry point — CLI router (switch on command)
 src/detect.js         Finds docs dir, CLAUDE.md, checks install status
-src/init.js           Install flow: copy template, add reference, run fix, git-add
-src/reset.js          Remove template + reference, clean up empty dirs
+src/init.js           Install flow: agents, routing block, template, fix, git-add
+src/reset.js          Remove agents, routing block, template, clean up empty dirs
 src/status.js         Print install status
 src/audit.js          Scan .claude/agents/ and skills/ for missing model frontmatter
 src/fix.js            Inference engine + frontmatter injection
@@ -64,9 +64,11 @@ src/git.js            git-add helper (stages touched files automatically)
 ## Key Invariants
 
 - `init` and `reset` are idempotent — safe to run multiple times
-- `init` never overwrites existing template or duplicates CLAUDE.md reference
+- `init` never overwrites existing template, duplicates routing block, or overwrites existing agents
+- `init` on v0.4.0 projects upgrades single-line reference to routing block automatically
 - `reset` preserves user content in CLAUDE.md — only removes the routing block
-- `reset` removes docs/ directory only if empty after template removal
+- `reset` removes only better-model agents (identified by marker), preserves user agents
+- `reset` removes docs/ and .claude/agents/ directories only if empty after removal
 - `fix` skips agents/skills that already have `model:` set — never overwrites user choices
 - `fix` skips skills that delegate to an agent with model already set
 - `gitAdd` silently skips non-git projects and gitignored files
