@@ -67,4 +67,24 @@ describe("init", () => {
     assert.ok(template.includes("Tier 3"));
     assert.ok(template.includes("Sources & Credits"));
   });
+
+  it("creates agents in enforcement mode", () => {
+    init(tmp);
+    assert.ok(existsSync(join(tmp, ".claude", "agents", "sonnet-coder.md")));
+    assert.ok(existsSync(join(tmp, ".claude", "agents", "haiku-explorer.md")));
+  });
+
+  it("skips agents in soft mode", () => {
+    init(tmp, { soft: true });
+    assert.ok(!existsSync(join(tmp, ".claude", "agents", "sonnet-coder.md")));
+    assert.ok(!existsSync(join(tmp, ".claude", "agents", "haiku-explorer.md")));
+  });
+
+  it("adds routing block with CRITICAL directive to CLAUDE.md", () => {
+    init(tmp);
+    const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+    assert.ok(content.includes("<!-- better-model:start -->"));
+    assert.ok(content.includes("<!-- better-model:end -->"));
+    assert.ok(content.includes("CRITICAL"));
+  });
 });

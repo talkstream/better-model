@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0] - 2026-04-07
+
+### Added
+- **Custom agents**: `init` now creates `sonnet-coder.md` (model: sonnet) and `haiku-explorer.md` (model: haiku) in `.claude/agents/`
+- **Routing block**: CLAUDE.md gets a `CRITICAL` directive block instead of a single reference line — instructs Claude to set `model` parameter on every Agent tool call
+- **v0.4.0 migration**: `init` on v0.4.0 projects upgrades the single-line reference to the routing block automatically
+
+### Changed
+- **Code review → Opus**: `review` keyword moved from Sonnet-high to Opus-high tier in inference engine
+- `reset` now removes better-model agents (identified by marker comment), preserves user agents
+- `status` shows installed agents
+- `parseFrontmatter()` exported from fix.js for reuse
+
+### Field-tested
+- 8 sessions, 3,194 API calls: identified Sonnet at 6.6% (target 60%) — agents + routing block address this gap
+- Competitive analysis: claude-code-router (31.7k stars), Cursor Auto, Gemini CLI auto-routing
+
 ## [0.4.0] - 2026-04-07
 
 ### Added

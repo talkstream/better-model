@@ -24,9 +24,10 @@ Usage:
   npx better-model <command> [options]
 
 Commands:
-  init             Install with enforcement (default) — injects model
-                   frontmatter into .claude/agents/ and skills/
-  init --soft      Install soft mode — decision matrix as reference only
+  init             Install with enforcement (default) — creates agents,
+                   injects model frontmatter, adds routing block to CLAUDE.md
+  init --soft      Install soft mode — decision matrix as reference only,
+                   no agents created
   reset            Remove better-model and restore defaults
   status           Show current installation status
   audit            Check .claude/agents/ and skills for missing model settings

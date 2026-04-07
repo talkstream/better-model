@@ -18,8 +18,14 @@ describe("inferModel", () => {
     assert.equal(inferModel("architect", "Design system").model, "opus");
   });
 
-  it("returns sonnet with high effort for review/debug", () => {
+  it("returns opus with high effort for review", () => {
     const r = inferModel("code-reviewer", "Review code changes");
+    assert.equal(r.model, "opus");
+    assert.equal(r.effort, "high");
+  });
+
+  it("returns sonnet with high effort for debug", () => {
+    const r = inferModel("debugger", "Debug failing tests");
     assert.equal(r.model, "sonnet");
     assert.equal(r.effort, "high");
   });

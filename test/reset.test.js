@@ -60,4 +60,19 @@ describe("reset", () => {
     reset(tmp);
     reset(tmp); // second call
   });
+
+  it("removes better-model agents on reset", () => {
+    init(tmp);
+    assert.ok(existsSync(join(tmp, ".claude", "agents", "sonnet-coder.md")));
+    reset(tmp);
+    assert.ok(!existsSync(join(tmp, ".claude", "agents", "sonnet-coder.md")));
+    assert.ok(!existsSync(join(tmp, ".claude", "agents", "haiku-explorer.md")));
+  });
+
+  it("preserves user agents on reset", () => {
+    init(tmp);
+    writeFileSync(join(tmp, ".claude", "agents", "custom.md"), "# My Agent");
+    reset(tmp);
+    assert.ok(existsSync(join(tmp, ".claude", "agents", "custom.md")));
+  });
 });

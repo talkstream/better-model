@@ -19,7 +19,7 @@ export function inferModel(name, description) {
   }
 
   // Tier 3 — Opus
-  const opus = ["architect", "security", "audit", "migrate", "migration"];
+  const opus = ["architect", "security", "audit", "migrate", "migration", "review"];
   for (const kw of opus) {
     if (text.includes(kw)) {
       return { model: "opus", effort: "high", reason: `keyword "${kw}" → Tier 3 (expert reasoning)` };
@@ -27,7 +27,7 @@ export function inferModel(name, description) {
   }
 
   // Tier 2 — Sonnet (default + specific keywords)
-  const sonnetHigh = ["review", "lint", "debug", "investigate", "diagnose"];
+  const sonnetHigh = ["lint", "debug", "investigate", "diagnose"];
   for (const kw of sonnetHigh) {
     if (text.includes(kw)) {
       return { model: "sonnet", effort: "high", reason: `keyword "${kw}" → Tier 2 (needs rigor)` };
@@ -50,7 +50,7 @@ export function inferModel(name, description) {
  * @param {string} content
  * @returns {{ fields: Record<string, string>, body: string, hasFrontmatter: boolean }}
  */
-function parseFrontmatter(content) {
+export function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) return { fields: {}, body: content, hasFrontmatter: false };
 

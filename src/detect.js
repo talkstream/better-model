@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { AGENT_MARKER } from "./agents.js";
 
 const DOCS_CANDIDATES = ["docs", "doc", "documentation"];
 const CLAUDE_MD = "CLAUDE.md";
@@ -53,6 +54,22 @@ export function getInstallStatus(projectRoot) {
     claudeMdPath: claudeMdRel,
     docsDir,
   };
+}
+
+/**
+ * List better-model agents installed in the project (identified by marker).
+ * @param {string} projectRoot
+ * @returns {string[]} Filenames of installed better-model agents
+ */
+export function getInstalledAgents(projectRoot) {
+  const agentsDir = join(projectRoot, ".claude", "agents");
+  if (!existsSync(agentsDir)) return [];
+  return readdirSync(agentsDir)
+    .filter((f) => f.endsWith(".md"))
+    .filter((f) => {
+      const content = readFileSync(join(agentsDir, f), "utf8");
+      return content.includes(AGENT_MARKER);
+    });
 }
 
 export { CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER };

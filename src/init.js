@@ -3,12 +3,29 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getInstallStatus, CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER } from "./detect.js";
 import { fix, printFixResults } from "./fix.js";
+import { installAgents, AGENTS } from "./agents.js";
 import { gitAdd, isGitRepo } from "./git.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_SRC = join(__dirname, "..", "templates", TEMPLATE_FILE);
 
-const REFERENCE_LINE = `\n→ **[Model Selection Guide](docs/${TEMPLATE_FILE})** — when to use Opus/Sonnet/Haiku and effort levels\n`;
+const BLOCK_START = "<!-- better-model:start -->";
+const BLOCK_END = "<!-- better-model:end -->";
+const OLD_REFERENCE_LINE = `→ **[Model Selection Guide](docs/${TEMPLATE_FILE})** — when to use Opus/Sonnet/Haiku and effort levels`;
+
+const ROUTING_BLOCK = `${BLOCK_START}
+## Model Routing (better-model)
+
+**CRITICAL**: When spawning subagents via the Agent tool, ALWAYS set the \`model\` parameter:
+- \`model: "haiku"\` — search, grep, file reading, exploration, status checks
+- \`model: "sonnet"\` — code generation, tests, refactoring, debugging (1-2 files)
+- \`model: "opus"\` — multi-file refactoring (3+ files), architecture, security audits, **code review**
+
+Default to \`model: "sonnet"\` when unsure. Code review always uses Opus with max effort.
+See [full decision matrix](docs/${TEMPLATE_FILE}).
+${BLOCK_END}`;
+
+export { BLOCK_START, BLOCK_END };
 
 /**
  * Install better-model into the target project.
@@ -25,6 +42,16 @@ export function init(projectRoot, options = {}) {
     console.log(`  Template: ${status.templatePath}`);
     console.log(`  Reference in: ${status.claudeMdPath}`);
     if (!soft) {
+      // Ensure agents are installed (idempotent)
+      const agentResult = installAgents(projectRoot);
+      if (agentResult.installed.length > 0) {
+        console.log("\n  Installed missing agents:");
+        for (const f of agentResult.installed) {
+          console.log(`    + .claude/agents/${f}`);
+          touchedFiles.push(`.claude/agents/${f}`);
+        }
+      }
+
       console.log("\n  Running enforcement check on agents/skills...");
       const results = fix(projectRoot);
       printFixResults(results, false);
@@ -54,22 +81,45 @@ export function init(projectRoot, options = {}) {
   }
   touchedFiles.push(templateRel);
 
-  // Add reference to CLAUDE.md
+  // Add routing block to CLAUDE.md
   const claudeMdPath = join(projectRoot, CLAUDE_MD);
   if (existsSync(claudeMdPath)) {
-    const content = readFileSync(claudeMdPath, "utf8");
-    if (!content.includes(REFERENCE_MARKER)) {
-      writeFileSync(claudeMdPath, content.trimEnd() + "\n" + REFERENCE_LINE);
-      console.log(`  Added reference to ${CLAUDE_MD}`);
+    let content = readFileSync(claudeMdPath, "utf8");
+    if (content.includes(BLOCK_START)) {
+      // Already has v0.5.0 block — skip
+    } else if (content.includes(OLD_REFERENCE_LINE)) {
+      // Upgrade v0.4.0 single-line to v0.5.0 block
+      content = content.replace(OLD_REFERENCE_LINE, ROUTING_BLOCK);
+      writeFileSync(claudeMdPath, content);
+      console.log(`  Upgraded reference to routing block in ${CLAUDE_MD}`);
+    } else if (!content.includes(REFERENCE_MARKER)) {
+      writeFileSync(claudeMdPath, content.trimEnd() + "\n\n" + ROUTING_BLOCK + "\n");
+      console.log(`  Added routing block to ${CLAUDE_MD}`);
     }
   } else {
-    writeFileSync(claudeMdPath, REFERENCE_LINE.trimStart());
-    console.log(`  Created ${CLAUDE_MD} with reference`);
+    writeFileSync(claudeMdPath, ROUTING_BLOCK + "\n");
+    console.log(`  Created ${CLAUDE_MD} with routing block`);
   }
   touchedFiles.push(CLAUDE_MD);
 
-  // Enforcement mode: inject model frontmatter into agents/skills
+  // Install agents (enforcement mode only)
   if (!soft) {
+    const agentResult = installAgents(projectRoot);
+    if (agentResult.installed.length > 0) {
+      console.log("\n  Installed agents:");
+      for (const f of agentResult.installed) {
+        console.log(`    + .claude/agents/${f}`);
+        touchedFiles.push(`.claude/agents/${f}`);
+      }
+    }
+    if (agentResult.skipped.length > 0) {
+      console.log("\n  Skipped agents (already exist):");
+      for (const f of agentResult.skipped) {
+        console.log(`    ~ .claude/agents/${f}`);
+      }
+    }
+
+    // Inject model frontmatter into any other agents/skills
     const results = fix(projectRoot);
     if (results.fixed.length > 0 || results.skipped.length > 0) {
       console.log("\n  Enforcement — injecting model frontmatter:");

@@ -11,7 +11,7 @@
 | Model | Relative speed | SWE-bench | GPQA Diamond | Rate limit (TPM) | Best for |
 |---|---|---|---|---|---|
 | **Opus 4.6** | baseline | 80.9% | 91.3% | 30K | Architecture, security, novel problems, large context |
-| **Sonnet 4.6** | ~1.4x faster | 79.6% | 74.1% | 90K | General coding, tests, reviews, refactoring (1–2 files) |
+| **Sonnet 4.6** | ~1.4x faster | 79.6% | 74.1% | 90K | General coding, tests, refactoring (1–2 files) |
 | **Haiku 4.5** | ~2x faster | — | — | 100K | Search, exploration, pattern matching |
 
 **Key insight**: Sonnet delivers 98% of Opus's coding performance with faster responses and 3x the rate limit headroom. The real gap is in expert-level reasoning (GPQA: 17.2 points) and novel problem-solving (ARC-AGI-2: 10.5 points) — not in everyday coding. By routing ~80% of tasks away from Opus, you can expect **~30% faster AI responses on average (up to 40%)** with no quality loss on coding tasks.
@@ -46,7 +46,6 @@ Use Sonnet for the majority of development work. It matches Opus on standard cod
 | Simple refactoring (1–2 files) | medium | Rename, extract, update API patterns |
 | Incident investigation | medium | Rootly benchmark: Sonnet matched or beat Opus |
 | Tool use / MCP calls | medium | MCP-Atlas benchmark: Sonnet wins by 1 point |
-| Code review (routine) | high | CodeRabbit data: moderate gap (Opus 50% vs Sonnet 41.5% important comments) |
 | Single-file debugging | high | Sufficient for isolated, well-scoped bugs |
 
 ### Tier 3 — Opus · ~20% of tasks · when Sonnet demonstrably falls short
@@ -58,6 +57,7 @@ Reserve Opus for tasks where cheaper models have documented failure modes.
 | Multi-file refactoring (3+ files) | high | Sonnet breaks behavioral dependencies silently (documented Redux→Zustand case) |
 | Cross-file debugging | high | Sonnet enters circular fix loops on 5+ file issues |
 | Architecture / system design | max | GPQA Diamond gap: 91.3% vs 74.1% — 17.2 points |
+| Code review | max | CodeRabbit data: Opus 50% vs Sonnet 41.5% important comments; catches subtle bugs |
 | Security audit | max | Opus catches middleware-order bugs and race conditions Sonnet misses |
 | Novel algorithm design | max | ARC-AGI-2 gap: 28.7% vs 18.2% — 10.5 points |
 | Large-context analysis (>200K tokens) | high | Sonnet degrades ~2% per 100K tokens; unreliable past 400K |
@@ -90,10 +90,10 @@ Reserve Opus for tasks where cheaper models have documented failure modes.
 Copy-paste these into your `.claude/agents/*.md` files to set model and effort per agent:
 
 ```yaml
-# For code review agents (Tier 2 — Sonnet)
+# For code review agents (Tier 3 — Opus)
 ---
-model: sonnet
-effort: high
+model: opus
+effort: max
 ---
 
 # For search/exploration agents (Tier 1 — Haiku)

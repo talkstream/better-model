@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { getInstallStatus, CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER } from "./detect.js";
+import { removeAgents } from "./agents.js";
+import { BLOCK_START, BLOCK_END } from "./init.js";
 
 /**
  * Remove better-model from the target project, restoring defaults.
@@ -12,6 +14,14 @@ export function reset(projectRoot) {
   if (!status.installed && !status.templatePath) {
     console.log("✗ better-model is not installed in this project.");
     return;
+  }
+
+  // Remove better-model agents
+  const agentResult = removeAgents(projectRoot);
+  if (agentResult.removed.length > 0) {
+    for (const f of agentResult.removed) {
+      console.log(`  Removed agent .claude/agents/${f}`);
+    }
   }
 
   // Remove template file
@@ -33,22 +43,34 @@ export function reset(projectRoot) {
     }
   }
 
-  // Remove reference from CLAUDE.md
+  // Remove routing block (or legacy reference line) from CLAUDE.md
   const claudeMdPath = join(projectRoot, CLAUDE_MD);
   if (existsSync(claudeMdPath)) {
     let content = readFileSync(claudeMdPath, "utf8");
-    if (content.includes(REFERENCE_MARKER)) {
-      // Remove lines containing the reference marker
-      const lines = content.split("\n");
-      const filtered = lines.filter((line) => !line.includes(REFERENCE_MARKER));
-      const cleaned = filtered.join("\n").trim();
+    let changed = false;
 
-      if (cleaned.length === 0) {
+    // v0.5.0 multi-line block
+    const blockStart = content.indexOf(BLOCK_START);
+    const blockEnd = content.indexOf(BLOCK_END);
+    if (blockStart !== -1 && blockEnd !== -1) {
+      const before = content.slice(0, blockStart);
+      const after = content.slice(blockEnd + BLOCK_END.length);
+      content = (before + after).replace(/\n{3,}/g, "\n\n").trim();
+      changed = true;
+    } else if (content.includes(REFERENCE_MARKER)) {
+      // v0.4.0 fallback: single-line reference
+      const lines = content.split("\n");
+      content = lines.filter((line) => !line.includes(REFERENCE_MARKER)).join("\n").trim();
+      changed = true;
+    }
+
+    if (changed) {
+      if (content.length === 0) {
         unlinkSync(claudeMdPath);
         console.log(`  Removed empty ${CLAUDE_MD}`);
       } else {
-        writeFileSync(claudeMdPath, cleaned + "\n");
-        console.log(`  Removed reference from ${CLAUDE_MD}`);
+        writeFileSync(claudeMdPath, content + "\n");
+        console.log(`  Removed routing block from ${CLAUDE_MD}`);
       }
     }
   }

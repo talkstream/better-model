@@ -1,4 +1,4 @@
-import { getInstallStatus } from "./detect.js";
+import { getInstallStatus, getInstalledAgents } from "./detect.js";
 
 /**
  * Print the current installation status of better-model.
@@ -11,6 +11,12 @@ export function status(projectRoot) {
     console.log("✓ better-model is installed.");
     console.log(`  Template: ${s.templatePath}`);
     console.log(`  Reference: ${s.claudeMdPath}`);
+    const agents = getInstalledAgents(projectRoot);
+    if (agents.length > 0) {
+      console.log(`  Agents: ${agents.join(", ")}`);
+    } else {
+      console.log("  Agents: none (run init to install)");
+    }
   } else {
     console.log("✗ better-model is not installed.");
     if (s.templatePath) {

@@ -31,8 +31,8 @@ src/reset.js          Remove template + reference, clean up empty dirs
 src/status.js         Print install status
 src/audit.js          Scan .claude/agents/ and skills/ for missing model frontmatter
 src/fix.js            Inference engine + frontmatter injection
+src/agents.js         Agent install/remove (sonnet-coder, haiku-explorer)
 src/git.js            git-add helper (stages touched files automatically)
-templates/BETTER-MODEL.md   The decision matrix template copied into user projects
 ```
 
 ## Code Patterns
@@ -65,7 +65,7 @@ templates/BETTER-MODEL.md   The decision matrix template copied into user projec
 
 - `init` and `reset` are idempotent — safe to run multiple times
 - `init` never overwrites existing template or duplicates CLAUDE.md reference
-- `reset` preserves user content in CLAUDE.md — only removes the reference line
+- `reset` preserves user content in CLAUDE.md — only removes the routing block
 - `reset` removes docs/ directory only if empty after template removal
 - `fix` skips agents/skills that already have `model:` set — never overwrites user choices
 - `fix` skips skills that delegate to an agent with model already set
@@ -75,9 +75,9 @@ templates/BETTER-MODEL.md   The decision matrix template copied into user projec
 
 The `inferModel()` function maps agent/skill names + descriptions to tiers:
 - **Tier 1 (Haiku, low)**: explore, search, scan, grep, find, discover, verify, health, check, status, monitor
-- **Tier 2 (Sonnet, high)**: review, lint, debug, investigate, diagnose
+- **Tier 2 (Sonnet, high)**: lint, debug, investigate, diagnose
 - **Tier 2 (Sonnet, medium)**: test, format, deploy, build, generate, refactor, pipeline
-- **Tier 3 (Opus, high)**: architect, security, audit, migrate, migration
+- **Tier 3 (Opus, high)**: architect, security, audit, migrate, migration, review
 - **Default**: Sonnet, medium
 
 Priority: Haiku checked first, then Opus, then Sonnet-high, then Sonnet-medium, then default.
@@ -86,7 +86,7 @@ Priority: Haiku checked first, then Opus, then Sonnet-high, then Sonnet-medium, 
 
 - Add runtime dependencies — the zero-dependency constraint is a core selling point
 - Use `rm` or `unlinkSync` on user files outside the known template path
-- Modify user's CLAUDE.md content beyond the single reference line
+- Modify user's CLAUDE.md content beyond the routing block (between better-model:start/end markers)
 - Change the frontmatter injection to overwrite existing `model:` values
 - Use CommonJS (`require`) anywhere
 - Add a build/transpilation step — source ships as-is

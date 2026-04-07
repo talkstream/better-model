@@ -31,7 +31,7 @@ node bin/better-model.js --help
 - **Zero dependencies** — only Node.js built-ins
 - **Evidence-based** — every matrix entry needs published data
 - **Idempotent** — `init` and `reset` are safe to run multiple times
-- **Minimal footprint** — one `.md` file + one reference line
+- **Minimal footprint** — one `.md` template + routing block + optional agents
 
 ### Running tests
 
