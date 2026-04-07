@@ -130,6 +130,14 @@ npx better-model init
 
 Then start a Claude Code session. Watch it pick Sonnet for your next grep.
 
+### Upgrading from v0.4.x
+
+```bash
+npx better-model reset && npx better-model@latest init
+```
+
+This replaces the old single-line reference with the new routing block and installs the agents.
+
 ---
 
 **Found it useful?** Star the repo — it helps others find it.
