@@ -47,7 +47,7 @@ Two custom agents with `model:` frontmatter (100% enforcement) plus a strengthen
 ```markdown
 ---
 name: sonnet-coder
-description: General-purpose coding agent for implementing features, writing tests, refactoring, and debugging in 1-2 files. Use for any coding subagent task that does not require multi-file architecture (3+ files with behavioral dependencies), security audit, code review, or novel algorithm design.
+description: General-purpose coding agent for implementing features, writing tests, refactoring, and fixing bugs in 1-2 files. Use for any coding subagent task that does not require multi-file architecture (3+ files with behavioral dependencies), security audit, code review, or novel algorithm design.
 model: sonnet
 effort: medium
 ---
