@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getInstallStatus } from "./detect.js";
-import { fix, printFixResults } from "./fix.js";
+import { fix, printFixResults, parseFrontmatter } from "./fix.js";
 import { gitAdd } from "./git.js";
 
 /**
@@ -47,7 +47,7 @@ export function audit(projectRoot, options = {}) {
       console.log("  Agents:");
       for (const file of agents) {
         const content = readFileSync(join(agentsDir, file), "utf8");
-        const frontmatter = extractFrontmatter(content);
+        const frontmatter = parseFrontmatter(content).fields;
         const name = file.replace(".md", "");
         const model = frontmatter.model || null;
         const effort = frontmatter.effort || null;
@@ -81,7 +81,7 @@ export function audit(projectRoot, options = {}) {
         const skillFile = join(skillsDir, dir.name, "SKILL.md");
         if (!existsSync(skillFile)) continue;
         const content = readFileSync(skillFile, "utf8");
-        const frontmatter = extractFrontmatter(content);
+        const frontmatter = parseFrontmatter(content).fields;
         const model = frontmatter.model || null;
         const effort = frontmatter.effort || null;
 
@@ -104,25 +104,4 @@ export function audit(projectRoot, options = {}) {
     console.log(`⚠ ${issues} agent(s) missing model or effort settings.`);
     console.log("  Run 'npx better-model audit --fix' to auto-inject model frontmatter.");
   }
-}
-
-/**
- * Extract YAML frontmatter fields from a markdown file.
- * @param {string} content
- * @returns {Record<string, string>}
- */
-function extractFrontmatter(content) {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return {};
-
-  const result = {};
-  for (const line of match[1].split("\n")) {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx > 0) {
-      const key = line.slice(0, colonIdx).trim();
-      const value = line.slice(colonIdx + 1).trim().replace(/^["']|["']$/g, "");
-      if (value) result[key] = value;
-    }
-  }
-  return result;
 }

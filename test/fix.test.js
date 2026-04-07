@@ -22,6 +22,7 @@ describe("inferModel", () => {
     const r = inferModel("code-reviewer", "Review code changes");
     assert.equal(r.model, "opus");
     assert.equal(r.effort, "high");
+    assert.notEqual(r.model, "sonnet", "review must NOT route to Sonnet");
   });
 
   it("returns sonnet with high effort for debug", () => {

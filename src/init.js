@@ -16,12 +16,13 @@ const OLD_REFERENCE_LINE = `→ **[Model Selection Guide](docs/${TEMPLATE_FILE})
 const ROUTING_BLOCK = `${BLOCK_START}
 ## Model Routing (better-model)
 
-**CRITICAL**: When spawning subagents via the Agent tool, ALWAYS set the \`model\` parameter:
-- \`model: "haiku"\` — search, grep, file reading, exploration, status checks
-- \`model: "sonnet"\` — code generation, tests, refactoring, debugging (1-2 files)
-- \`model: "opus"\` — multi-file refactoring (3+ files), architecture, security audits, **code review**
+**CRITICAL**: When spawning subagents via the Agent tool, ALWAYS set the \`model\` and \`effort\` parameters:
+- \`model: "haiku", effort: "low"\` — search, grep, file reading, exploration, status checks
+- \`model: "sonnet", effort: "medium"\` — code generation, tests, refactoring, bug fixes (1-2 files)
+- \`model: "opus", effort: "high"\` — multi-file refactoring (3+ files), architecture, security audits
+- \`model: "opus", effort: "max"\` — **code review**
 
-Default to \`model: "sonnet"\` when unsure. Code review always uses Opus with max effort.
+Default to \`model: "sonnet", effort: "medium"\` when unsure.
 See [full decision matrix](docs/${TEMPLATE_FILE}).
 ${BLOCK_END}`;
 

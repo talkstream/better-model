@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, rmdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { parseFrontmatter } from "./fix.js";
 
@@ -9,7 +9,7 @@ const AGENTS_DIR = join(".claude", "agents");
 
 const SONNET_CODER = `---
 name: sonnet-coder
-description: General-purpose coding agent for implementing features, writing tests, refactoring, and debugging in 1-2 files. Use for any coding subagent task that does not require multi-file architecture (3+ files with behavioral dependencies), security audit, code review, or novel algorithm design.
+description: General-purpose coding agent for implementing features, writing tests, refactoring, and fixing bugs in 1-2 files. Use for any coding subagent task that does not require multi-file architecture (3+ files with behavioral dependencies), security audit, code review, or novel algorithm design.
 model: sonnet
 effort: medium
 ---
@@ -138,7 +138,7 @@ export function removeAgents(projectRoot) {
 
   // Remove empty agents directory
   if (existsSync(agentsDir) && readdirSync(agentsDir).length === 0) {
-    rmdirSync(agentsDir);
+    rmSync(agentsDir, { recursive: true });
   }
 
   return { removed, kept };

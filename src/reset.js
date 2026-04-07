@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, rmdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { getInstallStatus, CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER } from "./detect.js";
 import { removeAgents } from "./agents.js";
@@ -37,7 +37,7 @@ export function reset(projectRoot) {
     if (existsSync(docsAbs)) {
       const remaining = readdirSync(docsAbs);
       if (remaining.length === 0) {
-        rmdirSync(docsAbs);
+        rmSync(docsAbs, { recursive: true });
         console.log(`  Removed empty ${status.docsDir}/`);
       }
     }
