@@ -106,4 +106,19 @@ describe("init", () => {
     assert.ok(!content.includes(oldRef), "should not have old reference line");
     assert.ok(content.includes("Some rules."), "should preserve other content");
   });
+
+  it("does not duplicate routing block on double init of v0.4.0 project", () => {
+    // Simulate v0.4.0 install
+    mkdirSync(join(tmp, "docs"), { recursive: true });
+    copyFileSync(templateSrc, join(tmp, "docs", "BETTER-MODEL.md"));
+    const oldRef = '→ **[Model Selection Guide](docs/BETTER-MODEL.md)** — when to use Opus/Sonnet/Haiku and effort levels';
+    writeFileSync(join(tmp, "CLAUDE.md"), `# Project\n\n${oldRef}\n`);
+
+    init(tmp); // first: upgrades
+    init(tmp); // second: should be idempotent
+
+    const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+    const blocks = content.match(/<!-- better-model:start -->/g);
+    assert.equal(blocks.length, 1, "should have exactly one routing block");
+  });
 });
