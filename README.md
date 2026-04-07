@@ -37,18 +37,18 @@ The gap only matters for architecture, security audits, multi-file refactoring, 
 
 **Step 1.** Run `npx better-model init` in your project.
 
-**Step 2.** It drops a decision matrix into `docs/BETTER-MODEL.md`, adds one line to `CLAUDE.md`, and injects `model:` frontmatter into your `.claude/agents/` and `.claude/skills/`.
+**Step 2.** It creates two optimized agents (`sonnet-coder` and `haiku-explorer`), drops a decision matrix into `docs/BETTER-MODEL.md`, adds a `CRITICAL` routing block to `CLAUDE.md`, and injects `model:` frontmatter into any existing `.claude/agents/` and `.claude/skills/`.
 
-**Step 3.** Claude Code reads the matrix at session start and routes tasks to the right model.
+**Step 3.** Claude Code reads the routing block at session start and dispatches subagent tasks to the right model — Sonnet for coding, Haiku for search, Opus for architecture and code review.
 
-That's it. No dependencies, no proxies, no hooks. One `.md` file and correct frontmatter.
+That's it. No dependencies, no proxies, no hooks. Two agents, one decision matrix, correct frontmatter.
 
 ## Two modes
 
 | Mode | Command | What it does |
 |---|---|---|
-| **Enforcement** (default) | `npx better-model init` | Matrix + inject `model:` and `effort:` into agents/skills |
-| **Soft** | `npx better-model init --soft` | Matrix as reference only — no frontmatter changes |
+| **Enforcement** (default) | `npx better-model init` | Agents + routing block + inject `model:` into agents/skills |
+| **Soft** | `npx better-model init --soft` | Matrix as reference only — no agents, no frontmatter changes |
 
 > [!TIP]
 > In a [field test](https://github.com/talkstream/better-model), a Claude Code session read the decision matrix in soft mode and **proactively updated agent configs on its own** — applying the correct model to all 8 agents and skills without `audit --fix` being run.
@@ -79,7 +79,7 @@ Codebase exploration, file search, pattern matching. Short, focused subagent tas
 <details>
 <summary><strong>Tier 2 — Sonnet (~60% of tasks)</strong></summary>
 
-The default for most coding: code generation, feature implementation, test writing, simple refactoring (1–2 files), routine code review, single-file debugging.
+The default for most coding: code generation, feature implementation, test writing, simple refactoring (1–2 files), single-file debugging.
 
 Sonnet delivers 98% of Opus's coding quality at 1.4x the speed.
 </details>
@@ -87,7 +87,7 @@ Sonnet delivers 98% of Opus's coding quality at 1.4x the speed.
 <details>
 <summary><strong>Tier 3 — Opus (~20% of tasks)</strong></summary>
 
-Reserved for tasks where Sonnet has documented failure modes: multi-file refactoring (3+ files with behavioral dependencies), cross-file debugging, architecture design, security audits, novel algorithm design, large-context analysis (>200K tokens).
+Reserved for tasks where Sonnet has documented failure modes: multi-file refactoring (3+ files with behavioral dependencies), cross-file debugging, architecture design, security audits, code review, novel algorithm design, large-context analysis (>200K tokens).
 
 The GPQA gap (17.2 points) and ARC-AGI-2 gap (10.5 points) are real — Opus earns its place here.
 </details>
@@ -106,8 +106,8 @@ See the [full decision matrix](templates/BETTER-MODEL.md) for complete details a
 You can! better-model is just a well-researched starting point:
 
 - **Evidence-based**: every routing rule cites published benchmarks, not vibes
-- **Enforcement mode**: actually injects `model:` frontmatter — CLAUDE.md alone is ~70% compliance, frontmatter is 100%
-- **Inference engine**: maps agent names to the right tier automatically (review → Sonnet, migrate → Opus, scan → Haiku)
+- **Ships ready-to-use agents**: `sonnet-coder` and `haiku-explorer` with `model:` frontmatter — 100% compliance vs ~70% from CLAUDE.md alone
+- **Inference engine**: maps agent names to the right tier automatically (review → Opus, migrate → Opus, scan → Haiku)
 - **Maintained**: as models and benchmarks evolve, `npx better-model@latest init` gets you the updated matrix
 - **Reversible**: `npx better-model reset` removes everything cleanly
 
