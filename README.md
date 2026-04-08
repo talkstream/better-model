@@ -43,6 +43,23 @@ The gap only matters for architecture, security audits, multi-file refactoring, 
 
 That's it. No dependencies, no proxies, no hooks. Two agents, one decision matrix, correct frontmatter.
 
+## Early results
+
+Field test on real Max subscriber sessions (April 7-9, 2026):
+
+```
+                Before agents          After agents          Delta
+                6,707 API calls        1,967 API calls
+
+Opus            79.4%                  73.2%                 -6.2pp
+Sonnet           1.6%                  21.1%                +19.6pp
+Haiku           19.1%                   5.6%                -13.4pp
+```
+
+Sonnet usage increased **13x** from baseline. Cost per API call dropped **~21%**. Data collected across 5 projects with v0.5.0 agents installed.
+
+> These are early results from a single user. Your mileage may vary depending on task mix and project complexity.
+
 ## Two modes
 
 | Mode | Command | What it does |
