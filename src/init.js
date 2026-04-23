@@ -13,20 +13,62 @@ const BLOCK_START = "<!-- better-model:start -->";
 const BLOCK_END = "<!-- better-model:end -->";
 const OLD_REFERENCE_LINE = `→ **[Model Selection Guide](docs/${TEMPLATE_FILE})** — when to use Opus/Sonnet/Haiku and effort levels`;
 
+// Every ROUTING_BLOCK carries a version marker so future upgrades can detect
+// a stale block by a stable identifier, not by incidental content like effort names.
+const CURRENT_BLOCK_VERSION = "0.6";
+const BLOCK_VERSION_MARKER = `<!-- better-model block version: ${CURRENT_BLOCK_VERSION} -->`;
+
 const ROUTING_BLOCK = `${BLOCK_START}
+${BLOCK_VERSION_MARKER}
 ## Model Routing (better-model)
 
 **CRITICAL**: When spawning subagents via the Agent tool, ALWAYS set the \`model\` and \`effort\` parameters:
 - \`model: "haiku", effort: "low"\` — search, grep, file reading, exploration, status checks
 - \`model: "sonnet", effort: "medium"\` — code generation, tests, refactoring, bug fixes (1-2 files)
-- \`model: "opus", effort: "high"\` — multi-file refactoring (3+ files), architecture, security audits
-- \`model: "opus", effort: "max"\` — **code review**
+- \`model: "opus", effort: "xhigh"\` — multi-file refactoring (3+ files), code review, migrations, cross-file debugging
+- \`model: "opus", effort: "max"\` — architecture design, security audits, novel algorithm design
 
 Default to \`model: "sonnet", effort: "medium"\` when unsure.
+Avoid Opus on >500K context — known lost-in-the-middle regression.
 See [full decision matrix](docs/${TEMPLATE_FILE}).
 ${BLOCK_END}`;
 
-export { BLOCK_START, BLOCK_END };
+export { BLOCK_START, BLOCK_END, ROUTING_BLOCK, BLOCK_VERSION_MARKER };
+
+/**
+ * Detect a routing block that should be upgraded to the current version.
+ * Stale = both markers present but the block does not contain the current
+ * BLOCK_VERSION_MARKER. Using a version sentinel (rather than incidental
+ * content like effort names) keeps future upgrades unambiguous.
+ * @param {string} content — full CLAUDE.md content
+ * @returns {boolean}
+ */
+export function isStaleRoutingBlock(content) {
+  if (!content.includes(BLOCK_START) || !content.includes(BLOCK_END)) {
+    return false;
+  }
+  const startIdx = content.indexOf(BLOCK_START);
+  const endIdx = content.indexOf(BLOCK_END, startIdx);
+  // BLOCK_END not found after BLOCK_START — content is truncated or markers
+  // are in reverse order. Treat as not-a-block (do not upgrade something
+  // we cannot cleanly identify).
+  if (endIdx === -1) return false;
+  const block = content.slice(startIdx, endIdx + BLOCK_END.length);
+  return !block.includes(BLOCK_VERSION_MARKER);
+}
+
+/**
+ * Replace the existing routing block (identified by start/end markers)
+ * with the current ROUTING_BLOCK. Assumes the caller has already verified
+ * both markers are present.
+ * @param {string} content
+ * @returns {string}
+ */
+function replaceRoutingBlock(content) {
+  const startIdx = content.indexOf(BLOCK_START);
+  const endIdx = content.indexOf(BLOCK_END, startIdx) + BLOCK_END.length;
+  return content.slice(0, startIdx) + ROUTING_BLOCK + content.slice(endIdx);
+}
 
 /**
  * Install better-model into the target project.
@@ -43,15 +85,22 @@ export function init(projectRoot, options = {}) {
     console.log(`  Template: ${status.templatePath}`);
     console.log(`  Reference in: ${status.claudeMdPath}`);
 
-    // Upgrade v0.4.0 single-line reference to v0.5.0 routing block
+    // Upgrade CLAUDE.md in two paths:
+    //   1. v0.4.x single-line reference → v0.6 routing block
+    //   2. v0.5.x routing block (opus/high, no xhigh) → v0.6 routing block
     const claudeMdPath = join(projectRoot, CLAUDE_MD);
     if (existsSync(claudeMdPath)) {
       let content = readFileSync(claudeMdPath, "utf8");
-      if (!content.includes(BLOCK_START) && content.includes(OLD_REFERENCE_LINE)) {
+      if (isStaleRoutingBlock(content)) {
+        content = replaceRoutingBlock(content);
+        writeFileSync(claudeMdPath, content);
+        touchedFiles.push(CLAUDE_MD);
+        console.log("  Upgraded v0.5 routing block to v0.6.");
+      } else if (!content.includes(BLOCK_START) && content.includes(OLD_REFERENCE_LINE)) {
         content = content.replace(OLD_REFERENCE_LINE, ROUTING_BLOCK);
         writeFileSync(claudeMdPath, content);
         touchedFiles.push(CLAUDE_MD);
-        console.log("  Upgraded CLAUDE.md reference to routing block.");
+        console.log("  Upgraded v0.4 reference to routing block.");
       }
     }
 
@@ -99,13 +148,18 @@ export function init(projectRoot, options = {}) {
   const claudeMdPath = join(projectRoot, CLAUDE_MD);
   if (existsSync(claudeMdPath)) {
     let content = readFileSync(claudeMdPath, "utf8");
-    if (content.includes(BLOCK_START)) {
-      // Already has v0.5.0 block — skip
+    if (isStaleRoutingBlock(content)) {
+      // Upgrade v0.5.x block → v0.6 block
+      content = replaceRoutingBlock(content);
+      writeFileSync(claudeMdPath, content);
+      console.log(`  Upgraded v0.5 routing block to v0.6 in ${CLAUDE_MD}`);
+    } else if (content.includes(BLOCK_START)) {
+      // Already has v0.6 block — skip
     } else if (content.includes(OLD_REFERENCE_LINE)) {
-      // Upgrade v0.4.0 single-line to v0.5.0 block
+      // Upgrade v0.4.x single-line reference → v0.6 block
       content = content.replace(OLD_REFERENCE_LINE, ROUTING_BLOCK);
       writeFileSync(claudeMdPath, content);
-      console.log(`  Upgraded reference to routing block in ${CLAUDE_MD}`);
+      console.log(`  Upgraded v0.4 reference to routing block in ${CLAUDE_MD}`);
     } else if (!content.includes(REFERENCE_MARKER)) {
       writeFileSync(claudeMdPath, content.trimEnd() + "\n\n" + ROUTING_BLOCK + "\n");
       console.log(`  Added routing block to ${CLAUDE_MD}`);
