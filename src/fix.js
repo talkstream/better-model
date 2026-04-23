@@ -18,11 +18,22 @@ export function inferModel(name, description) {
     }
   }
 
-  // Tier 3 — Opus
-  const opus = ["architect", "security", "audit", "migrate", "migration", "review"];
-  for (const kw of opus) {
+  // Tier 3 — Opus max (frontier reasoning: architecture, security, novel algorithms)
+  const opusMax = ["architect", "security", "novel", "algorithm"];
+  for (const kw of opusMax) {
     if (text.includes(kw)) {
-      return { model: "opus", effort: "high", reason: `keyword "${kw}" → Tier 3 (expert reasoning)` };
+      return { model: "opus", effort: "max", reason: `keyword "${kw}" → Tier 3 max (frontier reasoning)` };
+    }
+  }
+
+  // Tier 3 — Opus xhigh (agentic coding: code review, migrations, audits)
+  // xhigh is Anthropic's recommended starting point for Opus 4.7 coding/agentic work.
+  // Note: "migrate", "migration", "migrator" all distinct — letter 'e' vs 'i' means
+  // neither subsumes the others; list all three to cover common agent naming patterns.
+  const opusXhigh = ["audit", "migrate", "migration", "migrator", "review"];
+  for (const kw of opusXhigh) {
+    if (text.includes(kw)) {
+      return { model: "opus", effort: "xhigh", reason: `keyword "${kw}" → Tier 3 xhigh (agentic coding)` };
     }
   }
 
