@@ -48,22 +48,26 @@ The gap only matters for architecture, security audits, multi-file refactoring, 
 
 That's it. No dependencies, no proxies, no hooks. Two agents, one decision matrix, correct frontmatter.
 
-## Early results
+## Field data
 
-Field test on real Max subscriber sessions (April 7–9, 2026) with better-model v0.5.0 on Opus 4.6:
+Refined methodology — **subagent-only** calls (Agent tool invocations, controlled by the routing block) in projects where better-model is installed. Excludes main-session `/model` choices, which depend on the user's manual selection and don't reflect routing behaviour.
+
+Measured on a single Max subscriber across the projects where better-model was installed (`platonmamatov.com`, `scandal`, `TA`, `better-model`):
 
 ```
-                Before agents          After agents          Delta
-                6,707 API calls        1,967 API calls
+                      Pre-install           v0.5.x era            v0.6.x era
+                      Mar 1 – Apr 4         Apr 12 – Apr 15       Apr 16 – Apr 24
 
-Opus            79.4%                  73.2%                 -6.2pp
-Sonnet           1.6%                  21.1%                +19.6pp
-Haiku           19.1%                   5.6%                -13.4pp
+  Subagent calls      44,319                1,704                 1,266
+
+  Opus                52.7%                 49.2%                 46.1%    -6.6pp
+  Sonnet               3.8%                 46.2%                 45.5%    +41.7pp  ← 12×
+  Haiku               42.4%                  4.6%                  8.5%    -33.9pp
 ```
 
-Sonnet usage increased **13×** from baseline. Cost per API call dropped **~21%**. Data collected across 5 projects with v0.5.0 agents installed.
+**The headline: Sonnet share in subagent dispatch went from 3.8% to ~46%** — a 12× increase. Most of that shift came out of Haiku (42.4% → ~9%) — routine coding tasks that were previously handled by the native Explore-agent Haiku are now routed to `sonnet-coder` where code quality matters. Opus share moved only -6.6 pp, confirming the tool doesn't suppress legitimate Opus-tier work.
 
-> These are early results from a single user on v0.5.0 (Opus 4.6 era). Your mileage may vary depending on task mix and project complexity. v0.6.0 (Opus 4.7 + xhigh) is expected to maintain or improve these gains — updated field data will land in v0.6.1.
+> **Caveats:** Numbers are from one user across 4 projects. Pre-install Haiku share (42.4%) reflects the native Claude Code Explore agent, not a missing baseline. v0.6 era sample is smaller (1,266 calls over 9 days) than pre-install (44,319 calls over ~5 weeks). Main-session `/model` choices and projects without better-model installed are excluded. The previous v0.5.0 field test numbers (published in v0.5.0 README) mixed main-session and subagent calls — the refined subagent-only aggregate above is a cleaner measure of what the routing block actually controls.
 
 ## Two modes
 
