@@ -27,7 +27,10 @@ Handle this coding task efficiently following existing project patterns.
 ## Escalation
 If the task requires changes across 3+ files with behavioral dependencies,
 architecture decisions, security implications, or code review \u2014 stop and report
-to the parent agent that this task exceeds sonnet-coder scope.
+to the parent agent that this task exceeds sonnet-coder scope. The parent should
+dispatch a new Agent with \`model: "opus"\` and \`effort: "xhigh"\` for most
+Tier-3 work, or \`"max"\` for architecture, security audits, and novel
+algorithm design.
 
 ${AGENT_MARKER}
 `;
