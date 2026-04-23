@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.1] - 2026-04-24
+
+### Docs
+
+- **Refreshed "Field data" section** in README with subagent-only aggregate across BM-installed projects (platonmamatov.com, scandal, TA, better-model). Previous v0.5.0 numbers mixed main-session `/model` choices with Agent-tool dispatches — the refined measure isolates what the routing block actually controls.
+- Headline: subagent Sonnet share went from 3.8% (pre-install) → 46.2% (v0.5 era) → 45.5% (v0.6 era) — **12× vs baseline**. Opus share moved -6.6 pp (52.7% → 46.1%), confirming the tool doesn't suppress legitimate Opus-tier work. Haiku share dropped from 42.4% (native Explore-agent default) to 4–9%.
+- Methodology documented in-line: subagent-only filter via `isSidechain:true` under `subagents/*.jsonl` path; main-session calls excluded; 583 Opus 4.7 subagent calls in v0.6 era are organic frontmatter routing (`db-migrator`, `tg-debugger`), not forced main-session use.
+- Code and routing logic unchanged — this is a documentation-only release.
+
 ## [0.6.0] - 2026-04-24
 
 ### Opus 4.7 matrix refresh
