@@ -66,23 +66,28 @@ src/git.js            git-add helper (stages touched files automatically)
 - `init` and `reset` are idempotent — safe to run multiple times
 - `init` never overwrites existing template, duplicates routing block, or overwrites existing agents
 - `init` on v0.4.0 projects upgrades single-line reference to routing block automatically
+- `init` on v0.5.x projects upgrades the routing block to the current version automatically (detected via absence of `BLOCK_VERSION_MARKER`)
 - `reset` preserves user content in CLAUDE.md — only removes the routing block
 - `reset` removes only better-model agents (identified by marker), preserves user agents
 - `reset` removes docs/ and .claude/agents/ directories only if empty after removal
 - `fix` skips agents/skills that already have `model:` set — never overwrites user choices
 - `fix` skips skills that delegate to an agent with model already set
 - `gitAdd` silently skips non-git projects and gitignored files
+- Every `ROUTING_BLOCK` carries a `BLOCK_VERSION_MARKER` comment inside its markers — future-proof signal for upgrade detection
 
 ## Inference Engine (src/fix.js)
 
-The `inferModel()` function maps agent/skill names + descriptions to tiers:
+The `inferModel()` function maps agent/skill names + descriptions to tiers (Opus 4.7 era):
 - **Tier 1 (Haiku, low)**: explore, search, scan, grep, find, discover, verify, health, check, status, monitor
 - **Tier 2 (Sonnet, high)**: lint, debug, investigate, diagnose
 - **Tier 2 (Sonnet, medium)**: test, format, deploy, build, generate, refactor, pipeline
-- **Tier 3 (Opus, high)**: architect, security, audit, migrate, migration, review
+- **Tier 3 (Opus, max)**: architect, security, novel, algorithm — frontier reasoning
+- **Tier 3 (Opus, xhigh)**: audit, migrate, migration, migrator, review — agentic coding (Anthropic's recommended starting point for Opus 4.7 coding work)
 - **Default**: Sonnet, medium
 
-Priority: Haiku checked first, then Opus, then Sonnet-high, then Sonnet-medium, then default.
+Priority: Haiku → Opus max → Opus xhigh → Sonnet high → Sonnet medium → default.
+
+Opus 4.7 specifically honours `low`/`medium` effort more literally than prior models — route agentic/coding work to `xhigh` (not `high`) to avoid shallow reasoning. `max` is reserved for novel/frontier tasks because Anthropic warns it can overthink on structured-output tasks like code review.
 
 ## Do NOT
 
