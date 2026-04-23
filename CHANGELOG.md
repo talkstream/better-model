@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.6.0] - 2026-04-24
+
+### Opus 4.7 matrix refresh
+
+- **Tier 3 reference model is now Opus 4.7** (released April 16, 2026) with refreshed benchmarks:
+  - SWE-bench Verified **87.6%** (Sonnet 4.6: 79.6%; gap widened to 8.0 pts)
+  - SWE-bench Pro **64.3%** (+10.9 pts vs Opus 4.6)
+  - GPQA Diamond **94.2%** (gap to Sonnet 4.6: 20.1 pts)
+  - Terminal-Bench 2.0 **69.4%**, MCP-Atlas **77.3%** (agentic tool use)
+- **New effort level `xhigh`** (Opus 4.7 only) — now the default for Tier-3 agentic coding: multi-file refactoring, code review, migrations, cross-file debugging. Anthropic's recommended starting point for Opus 4.7 coding and agentic work.
+- **`max` reserved** for architecture design, security audits, and novel algorithm design only. Anthropic warns that `max` can overthink on structured-output tasks — `xhigh` is the safer default for code review.
+- **Long-context warning**: Opus 4.7 has a documented lost-in-the-middle regression past ~500K tokens; prefer Sonnet 4.6 or chunking.
+- **Tokenizer caveat**: Opus 4.7 uses a new tokenizer producing 1.0–1.35× tokens vs Opus 4.6; effective cost on long prompts may rise up to ~35%.
+
+### Inference engine (`src/fix.js`)
+
+- Opus keyword list split into two tiers:
+  - **max** (frontier reasoning): `architect`, `security`, `novel`, `algorithm`
+  - **xhigh** (agentic coding): `audit`, `migrate`, `migration`, `migrator`, `review`
+- Previous v0.5.x behaviour was a single `opus/high` bucket that produced shallow reasoning on Opus 4.7 (which respects `high` more strictly than 4.6).
+
+### Routing block (`src/init.js`)
+
+- CLAUDE.md routing block updated with `opus/xhigh` and `opus/max` mappings and a long-context warning.
+- **New `BLOCK_VERSION_MARKER`** — every routing block now carries `<!-- better-model block version: 0.6 -->` so future upgrades can detect stale blocks unambiguously (not by incidental content).
+- **New `isStaleRoutingBlock(content)`** — returns `true` when both markers are present but the block lacks the current version marker.
+- `init` detects v0.5.x blocks in both installed and fresh-install paths and replaces them in place, preserving user content above and below.
+
+### Agents (`src/agents.js`)
+
+- `sonnet-coder` escalation instruction now tells the parent agent exactly which Opus 4.7 effort level to use (`xhigh` for most Tier-3 work, `max` for architecture/security/novel algorithms).
+- Frontmatter unchanged: `sonnet-coder` remains `model: sonnet, effort: medium`; `haiku-explorer` remains `model: haiku, effort: low`.
+
+### Upgrade path
+
+- `npx better-model@latest init` on a v0.5.x project auto-upgrades the routing block to v0.6 — no `reset` required.
+- `npx better-model@latest init` on a v0.4.x project still upgrades the single-line reference to a full v0.6 routing block in one step.
+- `reset` unchanged — still cleanly removes everything installed by better-model.
+
+### Tests
+
+- Total test count: **102** (up from 68 in v0.5.1; +34 new tests).
+- Inference engine: 23 new tests across Haiku/OpusMax/OpusXhigh/SonnetHigh/SonnetMedium tiers, priority ordering, and reason annotations.
+- Routing block detection and upgrade: 14 new tests for `isStaleRoutingBlock`, v0.5→v0.6 upgrade in both install branches, idempotency, content preservation.
+
+### Sources
+
+- [Anthropic Opus 4.7 announcement](https://www.anthropic.com/news/claude-opus-4-7)
+- [Anthropic effort docs](https://platform.claude.com/docs/en/build-with-claude/effort)
+- [CodeRabbit Opus 4.7 code review study](https://www.coderabbit.ai/blog/claude-opus-4-7-for-ai-code-review)
+- [Claude Code CLI v2.1.111 changelog](https://code.claude.com/docs/en/changelog) — `xhigh` support shipped April 16, 2026
+
 ## [0.5.1] - 2026-04-07
 
 ### Fixed
