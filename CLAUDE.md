@@ -25,8 +25,8 @@ node bin/better-model.js reset
 
 ```
 bin/better-model.js   Entry point — CLI router (switch on command)
-src/detect.js         Finds docs dir, CLAUDE.md, checks install status
-src/init.js           Install flow: agents, routing block, template, fix, git-add
+src/detect.js         Finds docs dir, CLAUDE.md, install status, package manager
+src/init.js           Install flow: agents, routing block, template, fix, git-add, pm hint
 src/reset.js          Remove agents, routing block, template, clean up empty dirs
 src/status.js         Print install status
 src/audit.js          Scan .claude/agents/ and skills/ for missing model frontmatter
@@ -74,6 +74,8 @@ src/git.js            git-add helper (stages touched files automatically)
 - `fix` skips skills that delegate to an agent with model already set
 - `gitAdd` silently skips non-git projects and gitignored files
 - Every `ROUTING_BLOCK` carries a `BLOCK_VERSION_MARKER` comment inside its markers — future-proof signal for upgrade detection
+- `detectPackageManager()` prefers lockfiles over the `packageManager` field (lockfiles are stronger evidence) — returns `null` for plain npm so the hint stays silent when it can't help
+- `init` prints the package-manager hint at most once per invocation, in both fresh-install and already-installed paths, after the final success block
 
 ## Inference Engine (src/fix.js)
 
