@@ -165,15 +165,17 @@ Then start a Claude Code session. Watch it pick Sonnet for your next grep — an
 
 ### Using pnpm, yarn, or bun
 
+better-model fits whichever package manager your project already uses:
+
 ```bash
 pnpm dlx better-model@latest init    # pnpm
 yarn dlx better-model@latest init    # yarn berry
 bunx better-model@latest init        # bun
 ```
 
-If your project has a `.npmrc` with pnpm-specific keys (`node-linker`, `auto-install-peers`, `strict-peer-dependencies`, `enable-pre-post-scripts`), running via `npx` will produce [npm warnings](https://github.com/npm/cli/issues/8153) that will become hard errors in npm 12. `pnpm dlx` / `yarn dlx` / `bunx` route through the matching manager instead, which understands those keys. For a permanent fix, [move the keys into `pnpm-workspace.yaml`](https://pnpm.io/settings) in camelCase (e.g. `nodeLinker: isolated`) and keep only auth/registry settings in `.npmrc`.
+If you run `npx better-model init` inside a pnpm, yarn, or bun project, better-model notices your lockfile or `packageManager` field and prints a one-line tip with the native command — so your next run stays quiet and fits into your existing toolchain. No hint appears in plain npm projects; you only see it when it's actually useful.
 
-When `init` runs in a pnpm/yarn/bun project, better-model prints this reminder automatically.
+**Why we went out of our way for this.** Many pnpm projects keep pnpm-only keys in `.npmrc` — `node-linker`, `auto-install-peers`, `strict-peer-dependencies`, `enable-pre-post-scripts`. npm 11 already prints "Unknown project config" warnings for those, and [npm 12 will refuse to start](https://github.com/npm/cli/issues/8153). We didn't want you to discover that the hard way through a cryptic `npx better-model` failure six months from now. Running through `pnpm dlx` / `yarn dlx` / `bunx` sidesteps the warnings today; the canonical long-term fix is to [move those keys into `pnpm-workspace.yaml`](https://pnpm.io/settings) in camelCase (`nodeLinker: isolated`, `autoInstallPeers: true`, …) and keep `.npmrc` for auth and registry only.
 
 ### Upgrading from v0.5.x
 
