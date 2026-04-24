@@ -7,6 +7,13 @@ const CLAUDE_MD = "CLAUDE.md";
 const TEMPLATE_FILE = "BETTER-MODEL.md";
 const REFERENCE_MARKER = "BETTER-MODEL.md";
 
+const PM_LOCKFILES = [
+  ["pnpm", "pnpm-lock.yaml"],
+  ["yarn", "yarn.lock"],
+  ["bun", "bun.lockb"],
+];
+const PM_PACKAGE_MANAGER_PREFIXES = ["pnpm@", "yarn@", "bun@"];
+
 /**
  * Find the first existing documentation directory, or default to "docs".
  * @param {string} projectRoot
@@ -70,6 +77,34 @@ export function getInstalledAgents(projectRoot) {
       const content = readFileSync(join(agentsDir, f), "utf8");
       return content.includes(AGENT_MARKER);
     });
+}
+
+/**
+ * Detect which package manager the project uses.
+ * Checks lockfiles first (strongest signal), then the packageManager field in
+ * package.json. Returns null when the project looks like plain npm or when no
+ * signal is present.
+ * @param {string} projectRoot
+ * @returns {"pnpm"|"yarn"|"bun"|null}
+ */
+export function detectPackageManager(projectRoot) {
+  for (const [pm, lockfile] of PM_LOCKFILES) {
+    if (existsSync(join(projectRoot, lockfile))) return pm;
+  }
+  const pkgJsonPath = join(projectRoot, "package.json");
+  if (!existsSync(pkgJsonPath)) return null;
+  try {
+    const { packageManager } = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+    if (typeof packageManager !== "string") return null;
+    for (const prefix of PM_PACKAGE_MANAGER_PREFIXES) {
+      if (packageManager.startsWith(prefix)) {
+        return prefix.slice(0, -1);
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export { CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER };

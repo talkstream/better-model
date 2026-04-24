@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findDocsDir, findClaudeMd, getInstallStatus } from "../src/detect.js";
+import { findDocsDir, findClaudeMd, getInstallStatus, detectPackageManager } from "../src/detect.js";
 
 describe("findDocsDir", () => {
   let tmp;
@@ -105,5 +105,87 @@ describe("getInstallStatus", () => {
     const s = getInstallStatus(tmp);
     assert.equal(s.installed, false);
     assert.equal(s.templatePath, null);
+  });
+});
+
+describe("detectPackageManager", () => {
+  let tmp;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "bm-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("returns null for an empty project", () => {
+    assert.equal(detectPackageManager(tmp), null);
+  });
+
+  it("returns null for a bare npm project (package.json only, no lockfile, no packageManager)", () => {
+    writeFileSync(join(tmp, "package.json"), JSON.stringify({ name: "x" }));
+    assert.equal(detectPackageManager(tmp), null);
+  });
+
+  it("detects pnpm via pnpm-lock.yaml", () => {
+    writeFileSync(join(tmp, "pnpm-lock.yaml"), "lockfileVersion: 9.0\n");
+    assert.equal(detectPackageManager(tmp), "pnpm");
+  });
+
+  it("detects yarn via yarn.lock", () => {
+    writeFileSync(join(tmp, "yarn.lock"), "# yarn lockfile v1\n");
+    assert.equal(detectPackageManager(tmp), "yarn");
+  });
+
+  it("detects bun via bun.lockb", () => {
+    writeFileSync(join(tmp, "bun.lockb"), "");
+    assert.equal(detectPackageManager(tmp), "bun");
+  });
+
+  it("detects pnpm via packageManager field when no lockfile present", () => {
+    writeFileSync(
+      join(tmp, "package.json"),
+      JSON.stringify({ name: "x", packageManager: "pnpm@9.15.0" }),
+    );
+    assert.equal(detectPackageManager(tmp), "pnpm");
+  });
+
+  it("detects yarn via packageManager field", () => {
+    writeFileSync(
+      join(tmp, "package.json"),
+      JSON.stringify({ name: "x", packageManager: "yarn@4.1.0" }),
+    );
+    assert.equal(detectPackageManager(tmp), "yarn");
+  });
+
+  it("detects bun via packageManager field", () => {
+    writeFileSync(
+      join(tmp, "package.json"),
+      JSON.stringify({ name: "x", packageManager: "bun@1.1.0" }),
+    );
+    assert.equal(detectPackageManager(tmp), "bun");
+  });
+
+  it("prefers lockfile over packageManager (lockfile is stronger evidence)", () => {
+    writeFileSync(join(tmp, "pnpm-lock.yaml"), "lockfileVersion: 9.0\n");
+    writeFileSync(
+      join(tmp, "package.json"),
+      JSON.stringify({ name: "x", packageManager: "yarn@4.1.0" }),
+    );
+    assert.equal(detectPackageManager(tmp), "pnpm");
+  });
+
+  it("returns null on malformed package.json", () => {
+    writeFileSync(join(tmp, "package.json"), "{ not: valid json");
+    assert.equal(detectPackageManager(tmp), null);
+  });
+
+  it("returns null when packageManager is not a recognized prefix", () => {
+    writeFileSync(
+      join(tmp, "package.json"),
+      JSON.stringify({ name: "x", packageManager: "npm@11.7.0" }),
+    );
+    assert.equal(detectPackageManager(tmp), null);
   });
 });

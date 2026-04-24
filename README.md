@@ -163,6 +163,18 @@ npx better-model init
 
 Then start a Claude Code session. Watch it pick Sonnet for your next grep — and Opus 4.7 + `xhigh` for your next multi-file refactor.
 
+### Using pnpm, yarn, or bun
+
+```bash
+pnpm dlx better-model@latest init    # pnpm
+yarn dlx better-model@latest init    # yarn berry
+bunx better-model@latest init        # bun
+```
+
+If your project has a `.npmrc` with pnpm-specific keys (`node-linker`, `auto-install-peers`, `strict-peer-dependencies`, `enable-pre-post-scripts`), running via `npx` will produce [npm warnings](https://github.com/npm/cli/issues/8153) that will become hard errors in npm 12. `pnpm dlx` / `yarn dlx` / `bunx` route through the matching manager instead, which understands those keys. For a permanent fix, [move the keys into `pnpm-workspace.yaml`](https://pnpm.io/settings) in camelCase (e.g. `nodeLinker: isolated`) and keep only auth/registry settings in `.npmrc`.
+
+When `init` runs in a pnpm/yarn/bun project, better-model prints this reminder automatically.
+
 ### Upgrading from v0.5.x
 
 ```bash

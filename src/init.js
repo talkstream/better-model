@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getInstallStatus, CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER } from "./detect.js";
+import { getInstallStatus, detectPackageManager, CLAUDE_MD, TEMPLATE_FILE, REFERENCE_MARKER } from "./detect.js";
 import { fix, printFixResults } from "./fix.js";
 import { installAgents, AGENTS } from "./agents.js";
 import { gitAdd, isGitRepo } from "./git.js";
@@ -121,6 +121,7 @@ export function init(projectRoot, options = {}) {
       for (const f of results.fixed) touchedFiles.push(f.file);
       stageFiles(projectRoot, touchedFiles);
     }
+    printPackageManagerHint(projectRoot);
     return;
   }
 
@@ -209,6 +210,24 @@ export function init(projectRoot, options = {}) {
   if (staged.length === 0 && isGitRepo(projectRoot)) {
     console.log(`\n  Next: git add ${templateRel} ${CLAUDE_MD}`);
   }
+
+  printPackageManagerHint(projectRoot);
+}
+
+/**
+ * Print a one-shot hint when the project is managed by pnpm/yarn/bun so users
+ * know how to invoke better-model without npm warnings on pnpm-specific
+ * `.npmrc` keys (which npm 12 will reject outright).
+ * @param {string} projectRoot
+ */
+function printPackageManagerHint(projectRoot) {
+  const pm = detectPackageManager(projectRoot);
+  if (!pm) return;
+  const dlxCmd = pm === "bun" ? "bunx" : `${pm} dlx`;
+  console.log(`\n  Tip: this project uses ${pm}. Next time, run:`);
+  console.log(`    ${dlxCmd} better-model@latest init`);
+  console.log(`  to avoid npm warnings on pnpm-style .npmrc keys`);
+  console.log(`  (npm 12 will reject them — see https://pnpm.io/settings).`);
 }
 
 /**
