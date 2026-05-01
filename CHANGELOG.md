@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.2] - 2026-04-24
+
+### Package manager detection
+
+- **New: `detectPackageManager()`** in `src/detect.js` — identifies pnpm, yarn, or bun projects by lockfile (`pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`), with the `packageManager` field in `package.json` as a fallback. Returns `null` for plain npm so the hint stays silent when it can't help. Lockfiles are preferred over the field — a lockfile is stronger evidence of which manager is actually in use.
+- **New: package-manager hint in `init`** — when invoked via `npx` inside a pnpm/yarn/bun project, `init` prints a one-line tip suggesting the matching native command (`pnpm dlx`, `yarn dlx`, `bunx`). Printed at most once per invocation in both fresh-install and already-installed paths, after the final success block.
+
+### Why
+
+Many pnpm projects keep pnpm-only keys in `.npmrc` (`node-linker`, `auto-install-peers`, `strict-peer-dependencies`, `enable-pre-post-scripts`). [npm 11 already prints "Unknown project config" warnings](https://github.com/npm/cli/issues/8153) for those, and npm 12 will refuse to start. Running through `pnpm dlx` / `yarn dlx` / `bunx` sidesteps the warnings today; the canonical long-term fix is to [move those keys into `pnpm-workspace.yaml`](https://pnpm.io/settings) in camelCase and keep `.npmrc` for auth/registry only. The hint prevents users from discovering this six months later through a cryptic `npx better-model` failure.
+
+### Tests
+
+- 11 new tests in `test/detect.test.js` covering lockfile detection, `packageManager` field parsing, lockfile-over-field precedence, malformed JSON, and unrecognized prefixes. **113 tests total** (up from 102 in v0.6.0).
+
+### Docs
+
+- New "Using pnpm, yarn, or bun" section in README, framed around fitting the user's existing toolchain rather than working around an npm bug.
+- CLAUDE.md invariants updated to document pm-detection precedence and once-per-invocation hint behaviour.
+- Zero-dependency constraint preserved — only `node:fs` `existsSync` and `JSON.parse`.
+
 ## [0.6.1] - 2026-04-24
 
 ### Docs
