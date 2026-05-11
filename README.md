@@ -86,6 +86,8 @@ Read the source, fork it, tweak it. Adding a keyword to a tier is a one-line cha
 
 Normalized "task unit" = 300K input tokens + 1M output tokens at medium-effort baseline. Same task across three routing strategies:
 
+> **"Vanilla Claude Code"** = stock Claude Code without better-model installed, on a Pro/Max subscription. Since Claude Code v2.1.118 (Apr 23, 2026) the default model is Opus 4.7 and the default effort is `high` — applied to every task: main agent turns, every subagent dispatch, every grep, every test write. That's the baseline we compare against.
+
 | Scenario | Cost / task | Quality (SWE-bench Verified blend) | Speed (relative) |
 |---|---:|---:|---:|
 | Vanilla Claude Code (Max default: Opus 4.7 + `high` everywhere) | ~$47 | 87.6% | 1.0× baseline |
