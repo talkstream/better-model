@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1] - 2026-05-12
+
+### Docs
+
+- **Define "Vanilla Claude Code" before the economics table.** Reader feedback: the term was load-bearing in the savings claim but never defined. One-sentence callout now sits just above the table: stock Claude Code without better-model on a Pro/Max subscription, Opus 4.7 + `high` effort everywhere (the default since v2.1.118, Apr 23, 2026). That's the baseline `−18%` compares against.
+
+No code changes. 178 / 178 tests pass.
+
 ## [0.8.0] - 2026-05-12
 
 ### New: `stats` command — read-only observability
