@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.7.1] - 2026-05-12
+
+### README transparency centerpiece (user-requested)
+
+- **New "How better-model decides — the algorithm, transparently" section.** The full keyword-to-tier decision tree printed inline, plus a link to [`src/fix.js:10-57`](src/fix.js). No abstraction; the routing logic is 50 lines and every word is readable.
+- **New "What you gain — measured economics" section.** Three-row comparison table at a normalized 300K input + 1M output "task unit":
+  - Vanilla Claude Code (Max default: Opus 4.7 + `high` effort): **~$47** / task, 87.6% quality, 1.0× baseline speed
+  - Always Opus 4.7 + `max` effort: **~$122** / task, ~87.6% quality (may overthink), ~0.5× speed
+  - **better-model routing** (Sonnet 55.6% / Opus 32.8% / Haiku 11.7%): **~$38** / task, ~82.6% quality, ~1.4× faster avg
+  - Savings: **−18% vs Vanilla** and **−68% vs Always-max**
+  - Methodology block lists every assumption (input/output split, tokenizer multiplier, effort multipliers, within-tier mix, routing distribution, quality blend method) plus a 20-line Python reproducer.
+- Fixes stale Haiku-with-effort references throughout README (Tier 1 description, ready-to-use agents line, inference-engine summary).
+- New "Upgrading from v0.6.x" subsection explaining the auto-upgrade path and the audit warning users see for stale `effort: low` on Haiku agents.
+
+### Inference engine — three new keywords
+
+- **`ultraplan` → opus + max.** Anthropic's cloud planning feature (Code with Claude 2026) — architectural-level work warrants frontier reasoning.
+- **`orchestrate` / `orchestrator` → opus + xhigh.** Multi-agent orchestration pattern from Code with Claude 2026 (Netflix early adopter). Both listed explicitly: "orchestrate" does **not** subsume "orchestrator" by substring (final char differs, 'e' vs 'or'), same case as migrate/migration/migrator.
+- **`advisor` → opus + xhigh.** "Advisor strategy" pattern: smaller model calls Opus for guidance, ~5× cost reduction with frontier-quality output (per May 6 Code with Claude 2026 event).
+
+Note: `ultrareview` is intentionally NOT a new keyword — "review" subsumes it by substring.
+
+### Matrix refresh (`templates/BETTER-MODEL.md`)
+
+- **Long-context >500K split** into retrieval-heavy vs generation-heavy. Anthropic system card + community measurements (WentuoAI, GitHub issues #53234, #55504) confirm Opus 4.6 dominates 4.7 on multi-needle retrieval. The matrix now points retrieval workloads at **Opus 4.6** (still GA, not deprecated) and generation workloads at **Sonnet 4.6**.
+- **Opus 4.7 tokenizer caveat expanded** with verbatim Anthropic pricing-docs quote: "up to 35% more tokens for the same fixed text." Practical: code-heavy prompts trend toward the 1.35× ceiling, prose stays near 1.0×, prompt caching (3× cheaper subagent writes since v2.1.133) partly offsets the cost.
+- **New Tier-3 rows** matching the new keywords: multi-agent orchestration, Advisor strategy, architectural planning (ultraplan).
+- **New "Other Claude Code routing primitives" section** documents complementary mechanisms that compose with better-model: `opusplan` alias, `${CLAUDE_EFFORT}` skill substitution (since v2.1.120), `CLAUDE_CODE_SUBAGENT_MODEL` env var, `task_budget` parameter (beta, header `task-budgets-2026-03-13`), hooks receiving `effort.level` (since v2.1.133). These recommend depth/budget; better-model recommends model.
+- "Current Models at a Glance" heading bumped to "May 2026".
+
+### Tests
+
+- **126 tests** (was 119; +7 new):
+  - Direct keyword matches for `ultraplan`, `orchestrate`, `orchestrator`, `advisor`
+  - Substring coverage test confirming `ultrareview` matches via `review`
+  - Substring coverage test confirming `multi-agent-orchestrator` matches via `orchestrator`
+  - Priority test: `ultraplan-orchestrator` resolves to max (ultraplan max-tier outranks orchestrate xhigh-tier)
+  - Explicit `migrator` keyword test (previously only `migrate` and `migration` had direct tests)
+
+### Sources
+
+- [Anthropic pricing docs](https://platform.claude.com/docs/en/about-claude/pricing) — verbatim tokenizer +35% claim
+- [Anthropic April 23 postmortem](https://www.anthropic.com/engineering/april-23-postmortem)
+- [Code with Claude 2026 announcements](https://simonwillison.net/2026/May/6/code-w-claude-2026/) — multi-agent orchestration, Outcomes, Dreaming, Advisor strategy
+- [Claude Code changelog v2.1.118–v2.1.138](https://code.claude.com/docs/en/changelog) — `${CLAUDE_EFFORT}` substitution (v2.1.120), 3× subagent cache reduction (v2.1.133), hook `effort.level` (v2.1.133)
+
 ## [0.7.0] - 2026-05-12
 
 ### Haiku effort correctness fix
