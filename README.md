@@ -58,12 +58,16 @@ No black box. The routing logic is a single function at [`src/fix.js:10-57`](src
                 verify, health, check, status, monitor
 
 2. Opus + max  →  model: opus, effort: max
-   keywords:    architect, security, novel, algorithm
+   keywords:    architect, security, novel, algorithm, ultraplan
    rationale:   frontier reasoning — GPQA Diamond 94.2% vs 74.1%
 
 3. Opus + xhigh  →  model: opus, effort: xhigh
-   keywords:    audit, migrate, migration, migrator, review
-   rationale:   Anthropic-recommended starting point for Opus 4.7 coding/agentic
+   keywords:    audit, migrate, migration, migrator, review,
+                orchestrate, orchestrator, advisor
+   rationale:   Anthropic-recommended starting point for Opus 4.7 coding/agentic;
+                covers multi-agent orchestration and the "Advisor strategy"
+                pattern from Code with Claude 2026; "review" subsumes
+                "ultrareview" by substring
 
 4. Sonnet + high  →  model: sonnet, effort: high
    keywords:    lint, debug, investigate, diagnose

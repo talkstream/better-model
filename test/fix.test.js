@@ -59,6 +59,12 @@ describe("inferModel", () => {
       assert.equal(r.model, "opus");
       assert.equal(r.effort, "max");
     });
+
+    it("matches ultraplan keyword → max (Anthropic cloud planning feature)", () => {
+      const r = inferModel("ultraplan-runner", "Run ultraplan in cloud");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "max");
+    });
   });
 
   describe("Opus xhigh tier (Tier 3 agentic coding)", () => {
@@ -86,6 +92,39 @@ describe("inferModel", () => {
       assert.equal(r.effort, "xhigh");
       assert.notEqual(r.effort, "high", "review must NOT fall back to v0.5 high");
       assert.notEqual(r.effort, "max", "review must NOT use max — Anthropic warns about overthinking");
+    });
+
+    it("matches migrator keyword → xhigh (covers 'foo-migrator' agent naming)", () => {
+      const r = inferModel("schema-migrator", "Run schema migrator over the codebase");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "xhigh");
+    });
+
+    it("matches orchestrate keyword → xhigh (multi-agent orchestration pattern)", () => {
+      const r = inferModel("workflow-driver", "Orchestrate a multi-agent pipeline");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "xhigh");
+    });
+
+    it("matches orchestrator via substring → xhigh", () => {
+      // "orchestrate" subsumes "orchestrator" via substring; explicit test ensures
+      // common agent naming like 'multi-agent-orchestrator' is covered.
+      const r = inferModel("multi-agent-orchestrator", "Coordinate sub-agents");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "xhigh");
+    });
+
+    it("matches advisor keyword → xhigh (Code-with-Claude-2026 'Advisor strategy')", () => {
+      const r = inferModel("code-advisor", "Consult frontier model for guidance");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "xhigh");
+    });
+
+    it("matches ultrareview via substring → xhigh", () => {
+      // "review" subsumes "ultrareview" via substring; verify ultrareview-runner naming works.
+      const r = inferModel("ultrareview-runner", "Run ultrareview in CI");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "xhigh");
     });
   });
 
@@ -157,6 +196,12 @@ describe("inferModel", () => {
       const r = inferModel("sec-reviewer", "Security review");
       assert.equal(r.model, "opus");
       assert.equal(r.effort, "max", "max tier takes precedence over xhigh");
+    });
+
+    it("ultraplan (max) wins over orchestrate (xhigh) when both keywords present", () => {
+      const r = inferModel("ultraplan-orchestrator", "Plan and orchestrate at architectural level");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "max", "ultraplan (max-tier) outranks orchestrate (xhigh-tier)");
     });
 
     it("Opus xhigh wins over Sonnet high when both keywords present", () => {

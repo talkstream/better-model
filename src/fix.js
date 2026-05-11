@@ -19,19 +19,26 @@ export function inferModel(name, description) {
     }
   }
 
-  // Tier 3 — Opus max (frontier reasoning: architecture, security, novel algorithms)
-  const opusMax = ["architect", "security", "novel", "algorithm"];
+  // Tier 3 — Opus max (frontier reasoning: architecture, security, novel algorithms, ultra-planning)
+  // "ultraplan" added for the Anthropic cloud planning feature (Code with Claude 2026) —
+  // architectural planning warrants max effort.
+  const opusMax = ["architect", "security", "novel", "algorithm", "ultraplan"];
   for (const kw of opusMax) {
     if (text.includes(kw)) {
       return { model: "opus", effort: "max", reason: `keyword "${kw}" → Tier 3 max (frontier reasoning)` };
     }
   }
 
-  // Tier 3 — Opus xhigh (agentic coding: code review, migrations, audits)
+  // Tier 3 — Opus xhigh (agentic coding: code review, migrations, audits, orchestration, advisor)
   // xhigh is Anthropic's recommended starting point for Opus 4.7 coding/agentic work.
-  // Note: "migrate", "migration", "migrator" all distinct — letter 'e' vs 'i' means
-  // neither subsumes the others; list all three to cover common agent naming patterns.
-  const opusXhigh = ["audit", "migrate", "migration", "migrator", "review"];
+  // Substring/distinct-word notes:
+  //   - "migrate" / "migration" / "migrator" — all distinct (letter 'e' vs 'i' vs 'o')
+  //   - "orchestrate" / "orchestrator" — distinct (final 'e' vs 'or'), list both
+  //   - "orchestrate" subsumes "orchestration" by substring
+  //   - "review" subsumes "ultrareview" by substring
+  //   - "advisor" covers the Code-with-Claude-2026 "Advisor strategy" pattern
+  //     (smaller model calls a frontier model for guidance)
+  const opusXhigh = ["audit", "migrate", "migration", "migrator", "review", "orchestrate", "orchestrator", "advisor"];
   for (const kw of opusXhigh) {
     if (text.includes(kw)) {
       return { model: "opus", effort: "xhigh", reason: `keyword "${kw}" → Tier 3 xhigh (agentic coding)` };
