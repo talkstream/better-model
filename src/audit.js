@@ -52,7 +52,17 @@ export function audit(projectRoot, options = {}) {
         const model = frontmatter.model || null;
         const effort = frontmatter.effort || null;
 
-        if (model && effort) {
+        if (model === "haiku" && effort) {
+          // Haiku 4.5 does not support the effort parameter per Anthropic effort
+          // docs. The field is silently ignored by the API — surface it so the
+          // user can clean up. We do NOT auto-strip (preserves the fix() invariant
+          // "never overwrite user choices").
+          console.log(`    ⚠ ${name}: model=haiku, effort=${effort} (ignored — Haiku 4.5 does not support effort)`);
+          issues++;
+        } else if (model === "haiku") {
+          // Correct state for Haiku — no effort field.
+          console.log(`    ✓ ${name}: model=haiku (no effort — correctly omitted)`);
+        } else if (model && effort) {
           console.log(`    ✓ ${name}: model=${model}, effort=${effort}`);
         } else if (model) {
           console.log(`    ~ ${name}: model=${model}, effort=missing`);
@@ -99,9 +109,10 @@ export function audit(projectRoot, options = {}) {
   // Summary
   console.log("");
   if (issues === 0) {
-    console.log("✓ All agents have model configuration.");
+    console.log("✓ All agents have correct model/effort configuration.");
   } else {
-    console.log(`⚠ ${issues} agent(s) missing model or effort settings.`);
-    console.log("  Run 'npx better-model audit --fix' to auto-inject model frontmatter.");
+    console.log(`⚠ ${issues} agent(s) with model/effort issues.`);
+    console.log("  Run 'npx better-model audit --fix' to auto-inject missing model frontmatter.");
+    console.log("  Note: stale `effort` on Haiku agents (⚠) is NOT auto-stripped — edit the file manually.");
   }
 }
