@@ -48,6 +48,93 @@ The gap only matters for architecture, security audits, multi-file refactoring, 
 
 That's it. No dependencies, no proxies, no hooks. Two agents, one decision matrix, correct frontmatter.
 
+## How better-model decides — the algorithm, transparently
+
+No black box. The routing logic is a single function at [`src/fix.js:10-57`](src/fix.js), applied to `<agent-name> <agent-description>` lowercased. First-match-wins:
+
+```text
+1. Haiku tier  →  model: haiku  (no effort field — Haiku 4.5 does not support it)
+   keywords:    explore, search, scan, grep, find, discover,
+                verify, health, check, status, monitor
+
+2. Opus + max  →  model: opus, effort: max
+   keywords:    architect, security, novel, algorithm
+   rationale:   frontier reasoning — GPQA Diamond 94.2% vs 74.1%
+
+3. Opus + xhigh  →  model: opus, effort: xhigh
+   keywords:    audit, migrate, migration, migrator, review
+   rationale:   Anthropic-recommended starting point for Opus 4.7 coding/agentic
+
+4. Sonnet + high  →  model: sonnet, effort: high
+   keywords:    lint, debug, investigate, diagnose
+   rationale:   needs rigor on isolated bugs
+
+5. Sonnet + medium  →  model: sonnet, effort: medium
+   keywords:    test, format, deploy, build, generate, refactor, pipeline
+   rationale:   standard coding work
+
+6. Default fallback  →  model: sonnet, effort: medium
+```
+
+Read the source, fork it, tweak it. Adding a keyword to a tier is a one-line change. The full evidence-based mapping with benchmark citations lives in [`templates/BETTER-MODEL.md`](templates/BETTER-MODEL.md).
+
+## What you gain — measured economics
+
+Normalized "task unit" = 300K input tokens + 1M output tokens at medium-effort baseline. Same task across three routing strategies:
+
+| Scenario | Cost / task | Quality (SWE-bench Verified blend) | Speed (relative) |
+|---|---:|---:|---:|
+| Vanilla Claude Code (Max default: Opus 4.7 + `high` everywhere) | ~$47 | 87.6% | 1.0× baseline |
+| Always Opus 4.7 + `max` effort | ~$122 | ~87.6%¹ | ~0.5× (much slower) |
+| **better-model routing** (Sonnet 55.6% / Opus 32.8% / Haiku 11.7%) | **~$38** | **~82.6%** | **~1.4× faster avg** |
+| → savings vs Vanilla | **−18%** | −5.0 pts | +40% faster |
+| → savings vs Always-max | **−68%** | similar quality | ~2.8× faster |
+
+¹ `max` effort doesn't improve quality on most coding work — Anthropic explicitly warns it overthinks on structured-output tasks like code review.
+
+<details>
+<summary><strong>Methodology — every assumption, openly</strong></summary>
+
+- **Task unit**: 300K input tokens + 1M output tokens at "medium" effort baseline. Effort multipliers scale only the output side.
+- **Opus 4.7 tokenizer**: 1.20× multiplier on both sides (per [Anthropic pricing docs](https://platform.claude.com/docs/en/about-claude/pricing), "up to 1.35× more tokens for the same fixed text" — 1.20× is the mid-range; code-heavy prompts trend toward 1.35×).
+- **Effort multipliers** (output side, approximating Anthropic guidance — actual variance depends on workload): `low` 0.6×, `medium` 1.0×, `high` 1.5×, `xhigh` 2.5×, `max` 4.0×.
+- **Within-tier mix**: Sonnet 80% medium / 20% high (debug-heavy work); Opus 80% xhigh / 20% max (most coding stays at `xhigh` per Anthropic).
+- **Routing distribution**: empirical May 2026 (n=961 subagent calls across four better-model-installed projects). See "Field data" below.
+- **Quality blend**: SWE-bench Verified weighted by routing share, coding-only tasks (88.3% of routed work). Haiku-tier search tasks excluded — not benchmarked.
+- **Prompt cache**: NOT included. Claude Code v2.1.133 gives a 3× reduction on subagent caches, but it applies equally across all three scenarios, so it cancels out of the comparison.
+- **Per-project variance**: a Telegram-automation project routes ~73% to Haiku; a content-app project routes ~62% to Sonnet. Your savings depend on your task mix.
+
+Reproduce on your own numbers:
+
+```python
+SONNET_SHARE, OPUS_SHARE, HAIKU_SHARE = 0.556, 0.328, 0.117  # your distribution
+SONNET_HIGH_RATIO, OPUS_MAX_RATIO = 0.20, 0.20               # within-tier mix
+
+MULT = {"low": 0.6, "medium": 1.0, "high": 1.5, "xhigh": 2.5, "max": 4.0}
+IN_PRICE  = {"haiku": 1, "sonnet": 3, "opus": 5}    # $/MTok input
+OUT_PRICE = {"haiku": 5, "sonnet": 15, "opus": 25}  # $/MTok output
+TOKENIZER = {"opus": 1.20, "sonnet": 1.0, "haiku": 1.0}
+
+def cost(model, effort):
+    inp = 0.3 * TOKENIZER[model] * IN_PRICE[model]
+    out = 1.0 * MULT[effort] * TOKENIZER[model] * OUT_PRICE[model]
+    return inp + out
+
+sonnet = 0.80 * cost("sonnet", "medium") + 0.20 * cost("sonnet", "high")
+opus   = 0.80 * cost("opus",   "xhigh")  + 0.20 * cost("opus",   "max")
+haiku  = cost("haiku", "medium")  # no effort
+
+better      = SONNET_SHARE*sonnet + OPUS_SHARE*opus + HAIKU_SHARE*haiku
+vanilla     = cost("opus", "high")  # Max-subscriber default
+always_max  = cost("opus", "max")
+
+print(f"Vanilla:      ${vanilla:6.2f}")     # ~$46.80
+print(f"Always-max:   ${always_max:6.2f}")  # ~$121.80
+print(f"better-model: ${better:6.2f}")      # ~$38.44
+```
+
+</details>
+
 ## Field data
 
 Refined methodology — **subagent-only** calls (Agent tool invocations, controlled by the routing block) in projects where better-model is installed. Excludes main-session `/model` choices, which depend on the user's manual selection and don't reflect routing behaviour.
@@ -99,7 +186,7 @@ The decision matrix organizes tasks into three tiers based on published benchmar
 
 Codebase exploration, file search, pattern matching. Short, focused subagent tasks that require no reasoning.
 
-**Limitation**: unreliable beyond ~15 turns. Use only for quick subagent bursts. Default effort: `low`.
+**Limitation**: unreliable beyond ~15 turns. Use only for quick subagent bursts. **Note**: Haiku 4.5 does **not** support the `effort` parameter — set `model: haiku` without any `effort` field.
 </details>
 
 <details>
@@ -136,8 +223,8 @@ See the [full decision matrix](templates/BETTER-MODEL.md) for complete details a
 You can! better-model is just a well-researched starting point:
 
 - **Evidence-based**: every routing rule cites published benchmarks (Anthropic, LLM-Stats, CodeRabbit), not vibes
-- **Ships ready-to-use agents**: `sonnet-coder` (model: sonnet, effort: medium) and `haiku-explorer` (model: haiku, effort: low) — 100% compliance vs ~70% from CLAUDE.md alone
-- **Inference engine**: maps agent names to the right tier automatically (review → Opus + xhigh, architect → Opus + max, scan → Haiku + low)
+- **Ships ready-to-use agents**: `sonnet-coder` (model: sonnet, effort: medium) and `haiku-explorer` (model: haiku, no effort field) — 100% compliance vs ~70% from CLAUDE.md alone
+- **Inference engine**: maps agent names to the right tier automatically (review → Opus + xhigh, architect → Opus + max, scan → Haiku without effort)
 - **Maintained**: as models and benchmarks evolve, `npx better-model@latest init` gets you the updated matrix — v0.5 → v0.6 auto-upgrades in place
 - **Reversible**: `npx better-model reset` removes everything cleanly
 
@@ -177,13 +264,21 @@ If you run `npx better-model init` inside a pnpm, yarn, or bun project, better-m
 
 **Why we went out of our way for this.** Many pnpm projects keep pnpm-only keys in `.npmrc` — `node-linker`, `auto-install-peers`, `strict-peer-dependencies`, `enable-pre-post-scripts`. npm 11 already prints "Unknown project config" warnings for those, and [npm 12 will refuse to start](https://github.com/npm/cli/issues/8153). We didn't want you to discover that the hard way through a cryptic `npx better-model` failure six months from now. Running through `pnpm dlx` / `yarn dlx` / `bunx` sidesteps the warnings today; the canonical long-term fix is to [move those keys into `pnpm-workspace.yaml`](https://pnpm.io/settings) in camelCase (`nodeLinker: isolated`, `autoInstallPeers: true`, …) and keep `.npmrc` for auth and registry only.
 
+### Upgrading from v0.6.x
+
+```bash
+npx better-model@latest init
+```
+
+The v0.7.0 `init` recognises your v0.6.x routing block (which carried `effort: "low"` for Haiku — now known to be unsupported by Haiku 4.5 per [Anthropic effort docs](https://platform.claude.com/docs/en/build-with-claude/effort)) and upgrades it in place. Your existing `haiku-explorer.md` is left untouched — better-model never overwrites user files. Run `npx better-model audit` to see flagged stale `effort` on Haiku agents (⚠) and edit manually if you want a clean report.
+
 ### Upgrading from v0.5.x
 
 ```bash
 npx better-model@latest init
 ```
 
-The v0.6.0 `init` recognises your v0.5.x routing block and upgrades it in place — no `reset` needed. Agents (`sonnet-coder`, `haiku-explorer`) remain unchanged; only the CLAUDE.md routing block is updated to the Opus 4.7 + `xhigh`/`max` mapping.
+The v0.7.0 `init` recognises your v0.5.x routing block and upgrades it in place — no `reset` needed. Agents (`sonnet-coder`, `haiku-explorer`) remain unchanged; only the CLAUDE.md routing block is updated to the Opus 4.7 + `xhigh`/`max` mapping (with Haiku correctly omitting effort).
 
 ### Upgrading from v0.4.x
 
@@ -191,7 +286,7 @@ The v0.6.0 `init` recognises your v0.5.x routing block and upgrades it in place 
 npx better-model@latest init
 ```
 
-The single-line reference from v0.4.x is automatically replaced with the full v0.6.0 routing block in a single step — no data loss, no manual edits.
+The single-line reference from v0.4.x is automatically replaced with the full v0.7.0 routing block in a single step — no data loss, no manual edits.
 
 ---
 
