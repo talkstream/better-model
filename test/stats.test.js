@@ -18,6 +18,7 @@ import {
   formatText,
   formatJson,
   runStats,
+  parseStatsArgs,
 } from "../src/stats.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -430,6 +431,94 @@ describe("stats — runStats integration", () => {
     );
     assert.equal(result, 1);
     assert.match(logs.join("\n"), /Invalid `--days` value/);
+  });
+});
+
+describe("stats — parseStatsArgs CLI parser", () => {
+  it("returns default opts on empty argv", () => {
+    const r = parseStatsArgs([]);
+    assert.ok(r.ok);
+    assert.deepEqual(r.opts, { allProjects: false, json: false });
+  });
+
+  it("parses --all-projects boolean", () => {
+    const r = parseStatsArgs(["--all-projects"]);
+    assert.ok(r.ok);
+    assert.equal(r.opts.allProjects, true);
+  });
+
+  it("parses --json boolean", () => {
+    const r = parseStatsArgs(["--json"]);
+    assert.ok(r.ok);
+    assert.equal(r.opts.json, true);
+  });
+
+  it("parses --days N (space-separated value)", () => {
+    const r = parseStatsArgs(["--days", "30"]);
+    assert.ok(r.ok);
+    assert.equal(r.opts.days, 30);
+  });
+
+  it("parses --days=N (equals-separated value)", () => {
+    const r = parseStatsArgs(["--days=14"]);
+    assert.ok(r.ok);
+    assert.equal(r.opts.days, 14);
+  });
+
+  it("rejects --days with missing value", () => {
+    const r = parseStatsArgs(["--days"]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Missing value/);
+  });
+
+  it("rejects --days followed by another flag as missing value", () => {
+    const r = parseStatsArgs(["--days", "--json"]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Missing value/);
+  });
+
+  it("rejects --days= with empty value as missing", () => {
+    const r = parseStatsArgs(["--days="]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Missing value/);
+  });
+
+  it("rejects --days=1.5 (fractional)", () => {
+    const r = parseStatsArgs(["--days=1.5"]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Invalid `--days`/);
+  });
+
+  it("rejects --days -3 (negative)", () => {
+    const r = parseStatsArgs(["--days", "-3"]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Invalid `--days`/);
+  });
+
+  it("rejects --days abc as non-integer", () => {
+    const r = parseStatsArgs(["--days", "abc"]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Invalid `--days`/);
+  });
+
+  it("rejects --days=0 as non-positive", () => {
+    const r = parseStatsArgs(["--days=0"]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Invalid `--days`/);
+  });
+
+  it("rejects unknown flags", () => {
+    const r = parseStatsArgs(["--bogus"]);
+    assert.equal(r.ok, false);
+    assert.match(r.error, /Unknown flag/);
+  });
+
+  it("combines multiple flags", () => {
+    const r = parseStatsArgs(["--all-projects", "--days", "30", "--json"]);
+    assert.ok(r.ok);
+    assert.equal(r.opts.allProjects, true);
+    assert.equal(r.opts.json, true);
+    assert.equal(r.opts.days, 30);
   });
 });
 

@@ -24,24 +24,30 @@ Usage:
   npx better-model <command> [options]
 
 Commands:
-  init             Install with enforcement (default) — creates agents,
-                   injects model frontmatter, adds routing block to CLAUDE.md
-  init --soft      Install soft mode — decision matrix as reference only,
-                   no agents created
-  reset            Remove better-model and restore defaults
-  status           Show current installation status
-  audit            Check .claude/agents/ and skills for missing model settings
-  audit --fix      Auto-inject model frontmatter into agents and skills
+  init                   Install with enforcement (default) — creates agents,
+                         injects model frontmatter, adds routing block to CLAUDE.md
+  init --soft            Install soft mode — decision matrix as reference only,
+                         no agents created
+  reset                  Remove better-model and restore defaults
+  status                 Show current installation status
+  audit                  Check .claude/agents/ and skills for missing model settings
+  audit --fix            Auto-inject model frontmatter into agents and skills
+  stats                  Show recent Agent-call model distribution
+  stats --days N         Window in days (default 7)
+  stats --all-projects   Aggregate across all projects
+  stats --json           JSON output for scripting
 
 Options:
-  --help           Show this help message
-  --version        Show version number
+  --help                 Show this help message
+  --version              Show version number
 
 Examples:
   npx better-model init          # Enforcement mode (default)
   npx better-model init --soft   # Soft mode — .md reference only
   npx better-model audit         # Report missing model settings
   npx better-model audit --fix   # Fix missing model settings
+  npx better-model stats         # Recent routing distribution (current project, 7 days)
+  npx better-model stats --json  # Same, machine-readable
   npx better-model reset         # Remove and restore defaults
 
 Learn more: https://github.com/talkstream/better-model
@@ -70,6 +76,16 @@ async function main() {
     case "audit": {
       const { audit } = await import("../src/audit.js");
       audit(projectRoot, { fix: flags.has("--fix") });
+      break;
+    }
+    case "stats": {
+      const { runStats, parseStatsArgs } = await import("../src/stats.js");
+      const parsed = parseStatsArgs(args.slice(1));
+      if (!parsed.ok) {
+        console.error(parsed.error);
+        process.exit(1);
+      }
+      process.exitCode = await runStats({ cwd: projectRoot, ...parsed.opts });
       break;
     }
     case "--version":

@@ -327,6 +327,58 @@ export function formatJson(result) {
 }
 
 /**
+ * Parse CLI arguments for the `stats` subcommand. Supports `--flag value` and
+ * `--flag=value` forms — the existing audit.js pattern (`new Set(args)`) only
+ * handles boolean flags, so stats needs its own parser. Unknown flags or
+ * malformed `--days` produce {ok: false, error} which the caller turns into
+ * a friendly exit-1 message.
+ * @param {string[]} argv — argv slice AFTER the "stats" command word
+ * @returns {{ok:true, opts:{days?:number, allProjects:boolean, json:boolean}}|{ok:false, error:string}}
+ */
+export function parseStatsArgs(argv) {
+  const opts = { allProjects: false, json: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--all-projects") {
+      opts.allProjects = true;
+      continue;
+    }
+    if (a === "--json") {
+      opts.json = true;
+      continue;
+    }
+    if (a === "--days") {
+      const v = argv[++i];
+      // A bare `--days` at end of argv, or `--days --json` (next token is a
+      // flag, not a value), is "missing value", not "invalid value".
+      if (v === undefined || v.startsWith("--")) {
+        return { ok: false, error: "Missing value for `--days`. Try `--days 7`." };
+      }
+      const n = Number(v);
+      if (!Number.isInteger(n) || n <= 0) {
+        return { ok: false, error: `Invalid \`--days\` value: \`${v}\` — must be a positive integer.` };
+      }
+      opts.days = n;
+      continue;
+    }
+    if (a.startsWith("--days=")) {
+      const v = a.slice("--days=".length);
+      if (v === "") {
+        return { ok: false, error: "Missing value for `--days`. Try `--days=7`." };
+      }
+      const n = Number(v);
+      if (!Number.isInteger(n) || n <= 0) {
+        return { ok: false, error: `Invalid \`--days\` value: \`${v}\` — must be a positive integer.` };
+      }
+      opts.days = n;
+      continue;
+    }
+    return { ok: false, error: `Unknown flag \`${a}\`. Run \`better-model --help\` for usage.` };
+  }
+  return { ok: true, opts };
+}
+
+/**
  * Orchestrate stats command: discover files, aggregate, render.
  * @param {{
  *   cwd: string,
