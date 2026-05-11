@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.7.0] - 2026-05-12
+
+### Haiku effort correctness fix
+
+- **Removed `effort` injection on Haiku 4.5 agents.** Per [Anthropic effort docs](https://platform.claude.com/docs/en/build-with-claude/effort), the `effort` parameter is supported only on Claude Sonnet 4.6, Opus 4.6, Opus 4.7 (and Opus 4.5 / Mythos Preview). Haiku 4.5 is **not** in that list. v0.6.x shipped `effort: low` in three places (inferModel Tier 1 return, `HAIKU_EXPLORER` frontmatter, the routing-block example); the field was silently ignored by the API. v0.7.0 omits it everywhere it is generated.
+- The matrix at `templates/BETTER-MODEL.md` previously claimed "Haiku 4.5 does not support adaptive thinking; effort works via extended thinking in manual mode" — both halves were wrong. Replaced with a direct citation of the Anthropic effort docs and the rule "set `model: haiku` without `effort`".
+
+### Routing block v0.7
+
+- **Bumped `BLOCK_VERSION_MARKER` to `0.7`.** Existing v0.6 installs auto-upgrade on next `init` through the version-sentinel mechanism. The v0.5 → current and v0.4 → current paths continue to work; v0.6 → current is the new addition.
+- ROUTING_BLOCK haiku bullet now reads `model: "haiku"` (no effort), with a parenthetical noting why.
+
+### Inference engine (`src/fix.js`)
+
+- `inferModel` Tier 1 returns `{ model: "haiku", reason }` without an `effort` field.
+- **Latent bug fixed:** the injection guard in `fix()` previously read `if (effort && !fields.effort)` where `effort` was the option boolean (`true` by default) rather than the inferred value. With Tier 1 now returning no effort, the unguarded path would have written the literal string `"effort: undefined"` into user files. The guard now additionally checks `inferred.effort`. A regression test asserts the literal never appears in injected output.
+
+### Audit (`src/audit.js`)
+
+- **New ⚠ branch** when an agent has `model: haiku` and any `effort` field: `model=haiku, effort=low (ignored — Haiku 4.5 does not support effort)`. Increments the issues counter so the failure summary is reached.
+- **New ✓ branch** when an agent has `model: haiku` with no `effort`: `model=haiku (no effort — correctly omitted)`. Does **not** increment issues. This corrects a v0.6.x false-positive ("missing effort").
+- `audit --fix` does **not** auto-strip the stale `effort` from Haiku agents. The invariant "fix skips agents that already have `model:` set — never overwrites user choices" applies here too. Users edit the file manually after seeing the warning.
+
+### Template (`templates/BETTER-MODEL.md`)
+
+- Tier 1 table effort column shows `—` for Haiku entries.
+- "Effort Level Reference" `low` row availability: `Sonnet / Opus` only (Haiku removed, with an explicit note that the parameter is not supported on Haiku 4.5).
+- "Haiku limitations" footnote replaced with the Anthropic-effort-docs citation.
+- Agent Frontmatter Example for Haiku drops the `effort: low` line.
+- "Last updated" bumped to 2026-05-12.
+
+### Behavioural change for script consumers
+
+- `npx better-model audit` summary lines changed:
+  - Success: `"✓ All agents have model configuration."` → `"✓ All agents have correct model/effort configuration."`
+  - Failure: `"⚠ N agent(s) missing model or effort settings."` → `"⚠ N agent(s) with model/effort issues."`
+  - Added a third line on failure explaining that stale `effort` on Haiku is not auto-stripped.
+- Any CI script that greps for the old strings should update its expected text.
+
+### Migration
+
+- `npx better-model@0.7.0 init` on a v0.6.x project upgrades the routing block automatically. Existing `.claude/agents/haiku-explorer.md` carrying `effort: low` is **not** auto-modified — better-model never overwrites user files. Run `npx better-model audit` to see the warning and edit the file manually if you want a clean audit report.
+
+### Tests
+
+- **119 tests** (was 113; +6 net new). Highlights:
+  - Tier 1 assertions in `test/fix.test.js` now expect `effort === undefined` for every Haiku case.
+  - Regression guard in `test/fix.test.js` verifies the file content does **not** contain the literal `"effort: undefined"` or `"effort: low"` after `fix()` runs on a Haiku-keyword agent.
+  - New `V6_ROUTING_BLOCK` fixture and four new tests in `test/init.test.js` cover the v0.6 → current upgrade path in both installed and fresh-install branches, plus idempotency.
+  - Three new audit tests in `test/audit.test.js` use a zero-dep `captureAudit` shim to assert the new ⚠ / ✓ behaviour for Haiku.
+
+### Source
+
+- [Anthropic effort docs](https://platform.claude.com/docs/en/build-with-claude/effort) — canonical list of effort-supporting models, fetched 2026-05-12.
+
 ## [0.6.2] - 2026-04-24
 
 ### Package manager detection
