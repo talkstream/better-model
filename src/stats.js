@@ -289,8 +289,10 @@ export function formatText(result) {
     lines.push(`Compared to README target (Sonnet ${pctStr(README_TARGET.sonnet)} / Opus ${pctStr(README_TARGET.opus)} / Haiku ${pctStr(README_TARGET.haiku)}):`);
     for (const m of ["sonnet", "opus", "haiku"]) {
       const cmp = compareMark(result.subagentPct[m], README_TARGET[m]);
-      const sign = cmp.diff >= 0 ? "+" : "";
-      lines.push(`  ${cmp.mark} ${capitalize(m).padEnd(8)} ${sign}${cmp.diff.toFixed(1).padStart(5)} pp`);
+      const sign = cmp.diff >= 0 ? "+" : "-";
+      const num = Math.abs(cmp.diff).toFixed(1);
+      const signed = `${sign}${num}`.padStart(6);
+      lines.push(`  ${cmp.mark} ${capitalize(m).padEnd(8)} ${signed} pp`);
     }
   }
   return lines.join("\n");

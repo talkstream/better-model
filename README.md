@@ -160,6 +160,54 @@ Measured on a single Max subscriber across the projects where better-model was i
 
 > **Caveats:** Numbers are from one user across 4 projects. Pre-install Haiku share (42.4%) reflects the native Claude Code Explore agent, not a missing baseline. v0.6 era sample is smaller (1,266 calls over 9 days) than pre-install (44,319 calls over ~5 weeks). Main-session `/model` choices and projects without better-model installed are excluded. The previous v0.5.0 field test numbers (published in v0.5.0 README) mixed main-session and subagent calls — the refined subagent-only aggregate above is a cleaner measure of what the routing block actually controls.
 
+## Observability
+
+You don't have to take the published field data on faith. Run `npx better-model stats` in any project where better-model is installed and you get the same measurement, computed locally and read-only, against your own session history.
+
+```bash
+$ npx better-model stats
+better-model stats — /Users/alice/Projects/payment-service
+Window: last 7 days (2026-05-05T19:00:00.000Z → 2026-05-12T19:00:00.000Z)
+Source: 3 session files, 47 Agent calls
+
+Main agent (your Claude Code setting — better-model does NOT control):
+  Opus     100.0%  (412 turns)
+
+Subagent dispatch (controlled by better-model routing):
+  Sonnet    55.3%  (26 calls)
+  Opus      31.9%  (15 calls)
+  Haiku     12.8%  (6 calls)
+
+Compared to README target (Sonnet 55.6% / Opus 32.8% / Haiku 11.7%):
+  ✓ Sonnet     -0.3 pp
+  ✓ Opus       -0.9 pp
+  ✓ Haiku      +1.1 pp
+```
+
+The ✓/⚠/✗ markers reflect distance from the README target: within ±5 pp gets a ✓, 5–15 pp gets ⚠, beyond 15 pp gets ✗.
+
+The two blocks are separate on purpose. **Main agent** is whichever model you pick in Claude Code's settings — better-model has no way to swap it mid-session (Claude Code's harness reserves that for explicit user `/model` keystrokes). **Subagent dispatch** is what the routing block in `CLAUDE.md` actually controls — the model chosen for each `Agent()` tool call your main agent makes. Keeping them visually separate prevents the "100% Opus → better-model is broken" misread.
+
+```bash
+$ npx better-model stats --days 30      # 30-day rolling window
+$ npx better-model stats --all-projects # aggregate across every CC project
+$ npx better-model stats --json         # stable schema for scripts / CI
+```
+
+The `--json` schema is stable across releases (additions only): top-level `project`, `window_days`, `from`, `to`, `sessions`, `main_agent.{total,counts}`, `subagent_dispatch.{total,counts,percentages}`, `readme_target`.
+
+### What better-model controls (and what it doesn't)
+
+| ✓ better-model controls | ✗ better-model does not control |
+|---|---|
+| `model` (and `effort` for Opus/Sonnet) in every `Agent()` subagent dispatch — via the routing block hint in `CLAUDE.md` | Your **main agent** model — that's your Claude Code setting |
+| Two ready-to-use subagent agents: `sonnet-coder`, `haiku-explorer` | Your **main agent** effort — same |
+| `model:` frontmatter injection in `.claude/agents/` and `.claude/skills/` (via `audit --fix`) | When the main agent decides to spawn a subagent (the main agent's call) |
+| | Mid-session model switching — Claude Code's harness reserves `/model` for the user |
+| | Whether the main agent respects the routing block hint (it's a hint — sample data shows Explore subagents occasionally dispatched on Sonnet when the agent judged the task needed more rigor) |
+
+**Where savings actually come from.** In Plan Mode on a typical task, the main agent runs on Opus + xhigh end-to-end and spawns 1–3 Explore subagents — better-model can route those to Haiku, saving ~5–10% of the session cost. In `/loop` autonomous mode the main agent spawns more variety (`haiku-explorer`, `sonnet-coder`, `code-reviewer`, `architect`), and savings rise to the ~15–30% range consistent with the field data above. better-model shines when your workflow is subagent-heavy; if you spend all session in main-agent direct edits, the savings are necessarily smaller.
+
 ## Two modes
 
 | Mode | Command | What it does |
@@ -178,6 +226,10 @@ Measured on a single Max subscriber across the projects where better-model was i
 | `npx better-model init --soft` | Install soft mode — reference only |
 | `npx better-model audit` | Report agents/skills missing model settings |
 | `npx better-model audit --fix` | Auto-inject model/effort frontmatter |
+| `npx better-model stats` | Show recent Agent-call model distribution (last 7 days) |
+| `npx better-model stats --days N` | Same, with a custom window |
+| `npx better-model stats --all-projects` | Aggregate across every project under `~/.claude/projects/` |
+| `npx better-model stats --json` | Machine-readable output for scripts and CI |
 | `npx better-model reset` | Remove better-model and restore defaults |
 | `npx better-model status` | Check installation status |
 

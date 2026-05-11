@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.8.0] - 2026-05-12
+
+### New: `stats` command — read-only observability
+
+`npx better-model stats` aggregates Agent tool_use dispatches from `~/.claude/projects/<hash>/*.jsonl` (root-level files only, non-recursive — subagent inner sessions in `subagents/` subdirs are explicitly ignored) and shows the empirical routing distribution alongside the README target.
+
+**Two metrics, surfaced separately:**
+- **Main agent model distribution** (per `record.message.model`) — your Claude Code setting; better-model does not control this.
+- **Subagent dispatch distribution** (per `tool_use.input.model`) — what the routing block in `CLAUDE.md` actually influences.
+
+The split is deliberate: without it, a user who keeps the main agent on Opus would see "100% Opus" and mistake it for a better-model failure.
+
+**Flags:**
+- `stats` — current project, 7-day rolling window, text output
+- `stats --days N` and `stats --days=N` — custom window (positive integer; rejects `--days abc`, `--days 0`, `--days=1.5` with exit 1 + usage hint)
+- `stats --all-projects` — aggregate across every project under `~/.claude/projects/`
+- `stats --json` — machine-readable output with stable schema (additions only across releases): `project`, `window_days`, `from`, `to`, `sessions`, `main_agent.{total,counts}`, `subagent_dispatch.{total,counts,percentages}`, `readme_target`.
+
+**Universal-robustness pass.** Every common failure mode produces a friendly message rather than a stack trace:
+- `~/.claude/projects/` missing → "Claude Code logs not found. Run a session first."
+- Project hash dir missing → "No data for this project yet. Try `--all-projects` for an aggregate view."
+- Empty dir → "No session data."
+- Empty window → "0 Agent calls in last N days. Try `--days 30`."
+- All session files unreadable → exit 1 with "Schema may have changed — please file an issue."
+- Invalid `--days` (non-positive-integer) → exit 1 with usage hint.
+- Unknown flag → exit 1 with usage hint.
+
+**Privacy invariant.** Output never emits prompt content, UUIDs, tool-call IDs, or session IDs. A regex-pinned test asserts this over both text and JSON outputs.
+
+**Schema resilience.** Defensive parsing throughout: malformed JSON lines silently skipped (counted as `linesFailed` but never crash the aggregation); missing fields (e.g. `record.cwd` is absent on ~23% of records in real data) handled gracefully; `isSidechain: true` records skipped to avoid double-counting nested Agent calls. A 20-line fixture at `test/fixtures/sample-session.jsonl` anchors the current schema; if Claude Code ships a breaking change, the fixture-roundtrip test will fail and tell us to update.
+
+**Hash-collision fallback.** When the deterministic project-hash directory is missing (cwd has spaces, dots, non-ASCII characters, or differs from how Claude Code hashed it), `stats` falls back to scanning all project dirs, peeking the first 10 records of each session file (8 KB cap per file), and matching the `cwd` field against `process.cwd()`. On multi-match, picks the most-recently-modified dir and prints a friendly note suggesting `--all-projects` for the aggregate view.
+
+**Performance.** All file reads stream via `node:readline` — no full-file loads. Tested on the author's setup: aggregates 47 session files across 53 project dirs in under one second.
+
+### Tests
+
+54 new (124 → 178). Coverage matrix:
+- 7 normalization / pure-function tests (`projectHash`, `normalizeMainModel`, etc.)
+- 9 record-extraction tests (Agent vs non-Agent tool_use, sidechain, multi-block, missing input.model)
+- 6 aggregator tests (window edges, malformed lines, multi-file, percentages denominator)
+- 13 runStats integration tests (each failure mode, --json schema, privacy regex, --days validation, multi-match fallback warning)
+- 14 parseStatsArgs CLI parser tests (boolean flags, space/equals value forms, missing/invalid/empty/fractional/negative inputs, unknown flag)
+- 5 fixture / layout tests (T29 anchor with exact expected counts, T30 non-recursive listSessionFiles)
+
+### What's not in v0.8.0
+
+- **Skill template with `${CLAUDE_EFFORT}`** — deferred until Anthropic's substitution syntax stabilizes.
+- **`audit --strip-haiku-effort`** — destructive flag, no user requests, would violate the "never overwrite user model choices" invariant.
+- **Mythos Preview integration** — invite-only, not actionable.
+- **`--from` / `--to` ISO date flags** — defer to v0.8.1 if requested.
+- **`stats --diagnose`** — analytics for routing-block discipline (was the Explore subagent dispatched on Haiku as the routing block recommended? or on Sonnet?) — defer to v0.8.1.
+- **Subagent effort breakdown** (Opus xhigh vs Opus max) — `effort` is not present in `tool_use.input` for many real records; defer until that field stabilizes.
+- **Color output** — zero-dep constraint.
+- **Telemetry beacon** — never (invariant).
+
 ## [0.7.1] - 2026-05-12
 
 ### README transparency centerpiece (user-requested)
