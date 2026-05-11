@@ -6,7 +6,7 @@
 
 ---
 
-## Current Models at a Glance (April 2026)
+## Current Models at a Glance (May 2026)
 
 | Model | Rel. speed | SWE-bench Verified | SWE-bench Pro | GPQA Diamond | Context | Best for |
 |---|---|---|---|---|---|---|
@@ -16,9 +16,9 @@
 
 **Key insight**: Opus 4.7 extended its lead on coding (SWE-bench Verified gap 8.0 pts, up from 1.3 pts on the previous generation) and on agentic work (SWE-bench Pro 64.3% vs 53.4% on Opus 4.6). But Sonnet 4.6 stays **5× cheaper** ($3/$15 vs $5/$25 per MTok) and handles ~60% of routine coding at ~91% of Opus quality. Opus earns its place on multi-file agentic tasks, expert reasoning (GPQA gap 20.1 pts), and code review (CodeRabbit 68/100 pass rate, +24% vs baseline). By routing ~80% of tasks away from Opus you keep the speedup and capture near-all of the quality.
 
-> **Opus 4.7 caveats** (April 2026):
-> 1. **New tokenizer** — produces 1.0×–1.35× tokens vs Opus 4.6 on identical text. Effective cost on long prompts may rise up to ~35%. Prompt caching is more valuable than before.
-> 2. **Long-context regression** — documented "lost in the middle" degradation past ~500K tokens of live context. For large-context tasks, prefer Sonnet 4.6 or chunk the work.
+> **Opus 4.7 caveats** (verified May 2026):
+> 1. **New tokenizer — officially confirmed +35% on the high end.** [Anthropic pricing docs](https://platform.claude.com/docs/en/about-claude/pricing) state verbatim: "*Opus 4.7 uses a new tokenizer ... this new tokenizer may use up to 35% more tokens for the same fixed text.*" Code-heavy and structured-data prompts trend toward the ceiling (~1.30–1.35×); prose stays near 1.0×. Prompt caching (3× cheaper subagent-cache writes since Claude Code v2.1.133) partially offsets the cost. On long code-heavy prompts (>10K input tokens), prefer Sonnet 4.6 over Opus 4.7 when the quality gap is acceptable.
+> 2. **Long-context regression — retrieval vs generation are different.** Past ~500K tokens, Opus 4.7 has a documented "lost in the middle" regression on multi-needle retrieval. The Anthropic system card and community measurements (WentuoAI, GitHub issues #53234, #55504) confirm Opus 4.6 dominates 4.7 on long-context retrieval. For **retrieval-heavy** workloads past 500K, prefer **Opus 4.6** (it's still GA, not deprecated). For **generation-heavy** workloads, prefer Sonnet 4.6 (1M context, no regression) or chunk the task.
 > 3. **Stricter effort handling** — Opus 4.7 respects `low`/`medium` effort more literally than 4.6; if you see shallow reasoning on complex problems, raise effort rather than prompt around it.
 
 ---
@@ -63,11 +63,15 @@ Reserve Opus 4.7 for tasks where cheaper models have documented failure modes. M
 | Cross-file debugging | xhigh | Sonnet enters circular fix loops on 5+ file issues; Opus 4.7 tracks dependencies |
 | Code review | xhigh | CodeRabbit: 68/100 pass rate vs baseline 55/100 (+24% relative); `xhigh` over `max` avoids overthinking on structured output |
 | Migrations (DB / breaking API) | xhigh | Multi-step, stateful, agentic — `xhigh` is the sweet spot |
+| Multi-agent orchestration | xhigh | Code-with-Claude-2026 pattern — lead agent delegates to specialists (Netflix early adopter) |
+| Advisor strategy (frontier guidance) | xhigh | Smaller model calls Opus for guidance — ~5× cost reduction with frontier-quality output |
 | Architecture / system design | max | GPQA Diamond gap: 94.2% vs 74.1% — 20.1 points |
 | Security audit | max | Novel threat modeling; catches middleware-order bugs and race conditions Sonnet misses |
 | Novel algorithm design | max | ARC-AGI-2 gap persists — genuine frontier reasoning |
+| Architectural planning (ultraplan) | max | Anthropic cloud planning feature — architectural-level work warrants frontier reasoning |
 | Large-context analysis 200K–500K | xhigh | Opus 4.7 has 1M context but honours effort strictly; `xhigh` keeps focus |
-| Large-context > 500K | — | **Prefer Sonnet 4.6 or chunk the task** — Opus 4.7 has a documented lost-in-the-middle regression |
+| Large-context > 500K, retrieval-heavy | — | **Prefer Opus 4.6** (still GA) — system card confirms 4.6 dominates 4.7 on multi-needle retrieval |
+| Large-context > 500K, generation-heavy | — | **Prefer Sonnet 4.6** (no regression) or chunk the task |
 
 ---
 
@@ -139,6 +143,20 @@ The matrix above applies to **subagents**. For your own Claude Code session mode
 
 ---
 
+## Other Claude Code routing primitives
+
+better-model focuses on subagent dispatch. Claude Code itself ships several complementary mechanisms that compose with the routing block:
+
+- **`opusplan` alias** — `/model opusplan` uses Opus during plan mode and Sonnet during execution. Cost-aware session-level routing without manual switching. Verify with `/model` before risky operations (the anti-pattern table below documents historical bugs).
+- **`${CLAUDE_EFFORT}` skill substitution** (Claude Code v2.1.120+) — skills can interpolate the current session effort into their content. Useful for skills that construct prompts which should adapt to the session-wide effort knob.
+- **`CLAUDE_CODE_SUBAGENT_MODEL` env var** — global override for the model used by ALL subagent calls. Useful for "everything-Haiku" cost-control experiments. Use sparingly — better-model's per-agent frontmatter is the more precise tool.
+- **`task_budget` parameter** (beta, header `task-budgets-2026-03-13`, min 20K tokens) — advisory cost ceiling for long-running agentic loops. Anthropic quote: *"a rough estimate of how many tokens to target for a full agentic loop, including thinking, tool calls, tool results, and final output."* Complements `effort` (which sets depth-per-call); `task_budget` sets a ceiling across the whole loop.
+- **Hooks receive `effort.level`** (Claude Code v2.1.133+) — `PreToolUse` / `PostToolUse` hooks now see the active effort level via `$CLAUDE_EFFORT` env var. Useful for telemetry and per-effort cost accounting (observation only — main-session effort can't be auto-switched from a hook).
+
+These primitives recommend depth or budget; better-model's routing block recommends which model. Use them together.
+
+---
+
 ## Anti-Patterns to Avoid
 
 | Anti-pattern | Why it fails | Do this instead |
@@ -164,10 +182,13 @@ This decision matrix is based on published benchmarks and official Anthropic doc
 - **[ARC-AGI-2](https://arcprize.org)** — Opus 4.6 28.7% vs Sonnet 4.6 18.2% (Opus 4.7 result pending publication)
 - **[MCP-Atlas](https://www.anthropic.com/news/claude-opus-4-7)** — Opus 4.7 77.3% (agentic tool use, +14.6 pts vs 4.6)
 - **[CodeRabbit code review study](https://www.coderabbit.ai/blog/claude-opus-4-7-for-ai-code-review)** — Opus 4.7 pass rate 68/100 vs baseline 55/100 (+24% relative)
-- **[Anthropic effort docs](https://platform.claude.com/docs/en/build-with-claude/effort)** — `xhigh` recommended for Opus 4.7 coding/agentic
+- **[Anthropic effort docs](https://platform.claude.com/docs/en/build-with-claude/effort)** — `xhigh` recommended for Opus 4.7 coding/agentic; **Haiku 4.5 explicitly absent from the supported-models list** (this is what drove the v0.7.0 Haiku effort removal)
+- **[Anthropic pricing docs](https://platform.claude.com/docs/en/about-claude/pricing)** — verbatim confirmation of "up to 35% more tokens for the same fixed text" on the Opus 4.7 tokenizer
 - **[Anthropic Opus 4.7 announcement](https://www.anthropic.com/news/claude-opus-4-7)** — release notes, benchmark summary
+- **[Anthropic April 23 postmortem](https://www.anthropic.com/engineering/april-23-postmortem)** — three quality bugs (effort default flip, thinking-cache bug, verbosity prompt) that degraded Claude Code March–April 2026; all reverted by April 20
 - **[Anthropic Models overview](https://docs.anthropic.com/en/docs/about-claude/models)** — official specs, context windows, pricing
-- **[Claude Code changelog](https://code.claude.com/docs/en/changelog)** — v2.1.111 shipped `xhigh` + `/effort` slider (April 16, 2026)
+- **[Claude Code changelog](https://code.claude.com/docs/en/changelog)** — v2.1.111 shipped `xhigh` + `/effort` slider (April 16, 2026); v2.1.120 added `${CLAUDE_EFFORT}` in skills; v2.1.133 added effort.level to hooks + 3× subagent cache reduction
+- **[Code with Claude 2026 announcements](https://simonwillison.net/2026/May/6/code-w-claude-2026/)** — multi-agent orchestration, Outcomes (rubric grading), Dreaming (memory curation), Advisor strategy
 - **[RouteLLM](https://github.com/lm-sys/RouteLLM)** — model routing framework and cost-quality research (ICLR)
 - **[Claude Code Issue #27665](https://github.com/anthropics/claude-code/issues/27665)** — real token usage analysis from Max subscribers
 
