@@ -64,7 +64,9 @@ describe("installAgents", () => {
 
     const haiku = readFileSync(join(tmp, ".claude", "agents", "haiku-explorer.md"), "utf8");
     assert.ok(haiku.includes("model: haiku"));
-    assert.ok(haiku.includes("effort: low"));
+    // Haiku 4.5 does not support the effort parameter per Anthropic effort docs
+    // (https://platform.claude.com/docs/en/build-with-claude/effort) — frontmatter must omit it.
+    assert.ok(!haiku.includes("effort:"), "Haiku 4.5 does not support effort — frontmatter must not contain the field");
   });
 
   it("agent files contain marker", () => {

@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const templateSrc = join(__dirname, "..", "templates", "BETTER-MODEL.md");
 
 // A representative v0.5.1 routing block — the one shipped in 0.5.0 and 0.5.1.
-// Used to verify the v0.5 → v0.6 upgrade path.
+// Used to verify the v0.5 → current upgrade path.
 const V5_ROUTING_BLOCK = `<!-- better-model:start -->
 ## Model Routing (better-model)
 
@@ -24,6 +24,24 @@ Default to \`model: "sonnet", effort: "medium"\` when unsure.
 See [full decision matrix](docs/BETTER-MODEL.md).
 <!-- better-model:end -->`;
 
+// A representative v0.6 routing block — shipped in 0.6.0–0.6.2. Carries the
+// v0.6 BLOCK_VERSION_MARKER and the (now-incorrect) `effort: "low"` for Haiku.
+// Used to verify the v0.6 → current upgrade path (Haiku effort removal).
+const V6_ROUTING_BLOCK = `<!-- better-model:start -->
+<!-- better-model block version: 0.6 -->
+## Model Routing (better-model)
+
+**CRITICAL**: When spawning subagents via the Agent tool, ALWAYS set the \`model\` and \`effort\` parameters:
+- \`model: "haiku", effort: "low"\` — search, grep, file reading, exploration, status checks
+- \`model: "sonnet", effort: "medium"\` — code generation, tests, refactoring, bug fixes (1-2 files)
+- \`model: "opus", effort: "xhigh"\` — multi-file refactoring (3+ files), code review, migrations, cross-file debugging
+- \`model: "opus", effort: "max"\` — architecture design, security audits, novel algorithm design
+
+Default to \`model: "sonnet", effort: "medium"\` when unsure.
+Avoid Opus on >500K context — known lost-in-the-middle regression.
+See [full decision matrix](docs/BETTER-MODEL.md).
+<!-- better-model:end -->`;
+
 const V4_REFERENCE_LINE = '→ **[Model Selection Guide](docs/BETTER-MODEL.md)** — when to use Opus/Sonnet/Haiku and effort levels';
 
 describe("isStaleRoutingBlock", () => {
@@ -32,7 +50,12 @@ describe("isStaleRoutingBlock", () => {
     assert.equal(isStaleRoutingBlock(content), true);
   });
 
-  it("returns false for v0.6 block (contains xhigh)", () => {
+  it("returns true for v0.6 block (haiku effort: low, no v0.7 marker)", () => {
+    const content = `# Project\n\n${V6_ROUTING_BLOCK}\n`;
+    assert.equal(isStaleRoutingBlock(content), true);
+  });
+
+  it("returns false for current routing block (carries current version marker)", () => {
     const content = `# Project\n\n${ROUTING_BLOCK}\n`;
     assert.equal(isStaleRoutingBlock(content), false);
   });
@@ -133,15 +156,20 @@ describe("init", () => {
     assert.ok(!existsSync(join(tmp, ".claude", "agents", "haiku-explorer.md")));
   });
 
-  it("adds v0.6 routing block with CRITICAL directive, xhigh and max", () => {
+  it("adds current routing block with CRITICAL directive, xhigh, max, and Haiku without effort", () => {
     init(tmp);
     const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
     assert.ok(content.includes("<!-- better-model:start -->"));
     assert.ok(content.includes("<!-- better-model:end -->"));
     assert.ok(content.includes("CRITICAL"));
-    assert.ok(content.includes('effort: "xhigh"'), "v0.6 block must include xhigh");
-    assert.ok(content.includes('effort: "max"'), "v0.6 block must include max");
-    assert.ok(content.includes("lost-in-the-middle"), "v0.6 block must include long-context warning");
+    assert.ok(content.includes('effort: "xhigh"'), "current block must include xhigh");
+    assert.ok(content.includes('effort: "max"'), "current block must include max");
+    assert.ok(content.includes("lost-in-the-middle"), "current block must include long-context warning");
+    // Haiku line must NOT include effort — Haiku 4.5 does not support the effort parameter.
+    assert.ok(
+      !content.match(/model: "haiku",\s*effort:/),
+      "current block must NOT pair model: haiku with an effort field (Haiku 4.5 does not support effort)"
+    );
   });
 
   it("upgrades v0.4.0 reference to v0.6 routing block on re-init", () => {
@@ -172,7 +200,7 @@ describe("init", () => {
     assert.equal(blocks.length, 1, "should have exactly one routing block");
   });
 
-  it("upgrades v0.5.x routing block to v0.6 on init (installed branch)", () => {
+  it("upgrades v0.5.x routing block to current on init (installed branch)", () => {
     // Simulate v0.5.x install: template + old routing block
     mkdirSync(join(tmp, "docs"), { recursive: true });
     copyFileSync(templateSrc, join(tmp, "docs", "BETTER-MODEL.md"));
@@ -184,7 +212,7 @@ describe("init", () => {
     init(tmp);
 
     const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
-    assert.ok(content.includes('effort: "xhigh"'), "block should be upgraded to v0.6 (xhigh)");
+    assert.ok(content.includes('effort: "xhigh"'), "block should be upgraded to current (xhigh present)");
     assert.ok(!content.includes('effort: "high"'), "v0.5 opus/high routing should be gone");
     assert.ok(!content.includes("**code review**"), "v0.5 code-review phrasing should be gone");
     assert.ok(content.includes("User content above."), "content before block preserved");
@@ -193,14 +221,57 @@ describe("init", () => {
     assert.equal(blocks.length, 1, "exactly one routing block after upgrade");
   });
 
-  it("v0.5 → v0.6 upgrade is idempotent on repeated init", () => {
+  it("upgrades v0.6.x routing block to current on init (installed branch)", () => {
+    // v0.6.x ships effort: "low" for Haiku (now known to be unsupported by Haiku 4.5
+    // per Anthropic effort docs). The upgrade must strip that field.
+    mkdirSync(join(tmp, "docs"), { recursive: true });
+    copyFileSync(templateSrc, join(tmp, "docs", "BETTER-MODEL.md"));
+    writeFileSync(
+      join(tmp, "CLAUDE.md"),
+      `# Project\n\nUser content above.\n\n${V6_ROUTING_BLOCK}\n\nUser content below.\n`
+    );
+
+    init(tmp);
+
+    const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+    // Haiku effort: "low" from v0.6 must be gone after upgrade to current.
+    assert.ok(
+      !content.match(/model: "haiku",\s*effort:\s*"low"/),
+      "v0.6 haiku-with-effort line should be removed"
+    );
+    // xhigh / max must still be present (Opus tier mappings unchanged).
+    assert.ok(content.includes('effort: "xhigh"'), "Opus xhigh still mapped");
+    assert.ok(content.includes('effort: "max"'), "Opus max still mapped");
+    // User content surrounding the block must be untouched.
+    assert.ok(content.includes("User content above."), "content before block preserved");
+    assert.ok(content.includes("User content below."), "content after block preserved");
+    const blocks = content.match(/<!-- better-model:start -->/g);
+    assert.equal(blocks.length, 1, "exactly one routing block after upgrade");
+  });
+
+  it("v0.5 → current upgrade is idempotent on repeated init", () => {
     mkdirSync(join(tmp, "docs"), { recursive: true });
     copyFileSync(templateSrc, join(tmp, "docs", "BETTER-MODEL.md"));
     writeFileSync(join(tmp, "CLAUDE.md"), `# Project\n\n${V5_ROUTING_BLOCK}\n`);
 
-    init(tmp); // first: upgrades v0.5 → v0.6
+    init(tmp); // first: upgrades v0.5 → current
     const afterFirst = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
     init(tmp); // second: should be a no-op on the CLAUDE.md routing block
+    const afterSecond = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+
+    assert.equal(afterFirst, afterSecond, "CLAUDE.md unchanged on second init");
+    const blocks = afterSecond.match(/<!-- better-model:start -->/g);
+    assert.equal(blocks.length, 1, "exactly one routing block");
+  });
+
+  it("v0.6 → current upgrade is idempotent on repeated init", () => {
+    mkdirSync(join(tmp, "docs"), { recursive: true });
+    copyFileSync(templateSrc, join(tmp, "docs", "BETTER-MODEL.md"));
+    writeFileSync(join(tmp, "CLAUDE.md"), `# Project\n\n${V6_ROUTING_BLOCK}\n`);
+
+    init(tmp); // first: upgrades v0.6 → current
+    const afterFirst = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+    init(tmp); // second: no-op
     const afterSecond = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
 
     assert.equal(afterFirst, afterSecond, "CLAUDE.md unchanged on second init");
@@ -216,8 +287,24 @@ describe("init", () => {
     init(tmp);
 
     const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
-    assert.ok(content.includes('effort: "xhigh"'), "v0.5 block upgraded to v0.6 in fresh-install path");
+    assert.ok(content.includes('effort: "xhigh"'), "v0.5 block upgraded to current in fresh-install path");
     assert.ok(!content.includes('effort: "high"'), "old high effort routing removed");
+    const blocks = content.match(/<!-- better-model:start -->/g);
+    assert.equal(blocks.length, 1, "exactly one routing block");
+  });
+
+  it("handles v0.6 upgrade when no docs/ exists (fresh install branch)", () => {
+    // v0.6 routing block in CLAUDE.md but no template file — fresh-install branch
+    // must also strip the Haiku effort: low.
+    writeFileSync(join(tmp, "CLAUDE.md"), `# Project\n\n${V6_ROUTING_BLOCK}\n`);
+
+    init(tmp);
+
+    const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+    assert.ok(
+      !content.match(/model: "haiku",\s*effort:/),
+      "v0.6 haiku-with-effort removed in fresh-install path"
+    );
     const blocks = content.match(/<!-- better-model:start -->/g);
     assert.equal(blocks.length, 1, "exactly one routing block");
   });

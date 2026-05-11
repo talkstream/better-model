@@ -2,7 +2,7 @@
 
 > **Purpose**: Teach Claude Code to pick the right model (Opus / Sonnet / Haiku) and effort level for every task — maximizing speed without sacrificing quality.
 >
-> **Last updated**: 2026-04-24 · **Package**: [better-model](https://github.com/talkstream/better-model)
+> **Last updated**: 2026-05-12 · **Package**: [better-model](https://github.com/talkstream/better-model)
 
 ---
 
@@ -25,7 +25,7 @@
 
 ## Instructions for Claude Code
 
-When you spawn subagents via the `Agent` tool, **always set `model` and `effort`** according to the matrix below.
+When you spawn subagents via the `Agent` tool, **always set `model`** according to the matrix below. Set `effort` for Sonnet and Opus tiers; Haiku 4.5 does **not** support the `effort` parameter.
 
 ### Tier 1 — Haiku · ~20% of tasks · speed-critical, deterministic
 
@@ -33,11 +33,11 @@ Use Haiku for short, focused subagent tasks that require no reasoning.
 
 | Task | Effort | Why |
 |---|---|---|
-| Codebase exploration / search | low | Built-in Explore agent already defaults to Haiku |
-| File search, grep, glob | low | Deterministic — no reasoning needed |
-| Pattern matching, format checks | low | Structural, not semantic |
+| Codebase exploration / search | — | Built-in Explore agent already defaults to Haiku |
+| File search, grep, glob | — | Deterministic — no reasoning needed |
+| Pattern matching, format checks | — | Structural, not semantic |
 
-**Haiku limitations**: unreliable beyond ~10–15 turns — may forget variable names or rename classes. Use only for short subagent bursts. Haiku 4.5 does **not** support adaptive thinking; effort works via extended thinking in manual mode.
+**Haiku limitations**: unreliable beyond ~10–15 turns — may forget variable names or rename classes. Use only for short subagent bursts. Haiku 4.5 does **not** support the `effort` parameter — per [Anthropic effort docs](https://platform.claude.com/docs/en/build-with-claude/effort), effort is supported only on Sonnet 4.6, Opus 4.6, Opus 4.7 (and Opus 4.5). Set `model: haiku` without any `effort` field.
 
 ### Tier 2 — Sonnet · ~60% of tasks · the default for most coding
 
@@ -75,7 +75,7 @@ Reserve Opus 4.7 for tasks where cheaper models have documented failure modes. M
 
 1. **Default to Sonnet + medium** — this covers ~60% of all tasks with optimal speed-cost balance (matches Anthropic's recommended default for Sonnet 4.6).
 2. **Escalate to Opus 4.7 + `xhigh`** when the task spans 3+ files with behavioral dependencies, requires expert-level reasoning, touches security, or is a multi-step agentic flow.
-3. **Downgrade to Haiku + `low`** when the task is primarily search, read, or pattern-match inside a short subagent.
+3. **Downgrade to Haiku** (model only, no effort field) when the task is primarily search, read, or pattern-match inside a short subagent.
 4. **On Sonnet failure** (circular loop, ignored constraints, broken cross-file logic) → escalate to Opus 4.7 + `xhigh` immediately. Do **not** retry Sonnet at higher effort — a stronger model at lower effort beats a weaker model at higher effort.
 5. **Reserve `max` for novel reasoning only** (architecture, security audit, novel algorithm). For code review, migrations, and multi-file refactoring, `xhigh` is the safer default — `max` can overthink on structured-output tasks.
 6. **Effort is not a model substitute**: "Sonnet max" ≠ "Opus xhigh". Opus at medium uses 76% fewer output tokens for the same SWE-bench score than Sonnet at high.
@@ -87,7 +87,7 @@ Reserve Opus 4.7 for tasks where cheaper models have documented failure modes. M
 
 | Level | Availability | When to use | Notes |
 |---|---|---|---|
-| **low** | Haiku / Sonnet / Opus | Lookups, file reads, formatting, 1-shot subagents | Minimal reasoning; Opus 4.7 scopes work strictly |
+| **low** | Sonnet / Opus | Lookups, file reads, formatting, 1-shot subagents | Minimal reasoning; Opus 4.7 scopes work strictly. **Not available on Haiku 4.5** — set `model: haiku` without `effort` |
 | **medium** | Sonnet / Opus | Standard coding, tests, features | Anthropic-recommended default for Sonnet 4.6 |
 | **high** | Sonnet / Opus | Debugging, solid tasks needing intelligence | API default; equivalent to not setting the parameter |
 | **xhigh** | **Opus 4.7 only** | Coding, agentic work, repeated tool calls, 30+ min runs | Anthropic-recommended starting point for Opus 4.7 coding work |
@@ -108,10 +108,9 @@ model: sonnet
 effort: medium
 ---
 
-# For search / exploration agents (Tier 1 — Haiku)
+# For search / exploration agents (Tier 1 — Haiku, no effort field)
 ---
 model: haiku
-effort: low
 ---
 
 # For code review / multi-file refactoring / migration agents (Tier 3 — Opus 4.7)

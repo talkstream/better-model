@@ -6,29 +6,32 @@ import { tmpdir } from "node:os";
 import { inferModel, injectFrontmatterField, fix } from "../src/fix.js";
 
 describe("inferModel", () => {
-  describe("Haiku tier (Tier 1, effort=low)", () => {
+  describe("Haiku tier (Tier 1, no effort field)", () => {
+    // Haiku 4.5 does not support the effort parameter per Anthropic effort docs
+    // (https://platform.claude.com/docs/en/build-with-claude/effort) — inferModel
+    // must omit effort entirely for Haiku results.
     it("matches search keyword", () => {
       const r = inferModel("code-explorer", "Search codebase");
       assert.equal(r.model, "haiku");
-      assert.equal(r.effort, "low");
+      assert.equal(r.effort, undefined, "Haiku 4.5 does not support effort");
     });
 
     it("matches verify keyword", () => {
       const r = inferModel("health-checker", "Verify deployment");
       assert.equal(r.model, "haiku");
-      assert.equal(r.effort, "low");
+      assert.equal(r.effort, undefined, "Haiku 4.5 does not support effort");
     });
 
     it("matches scan keyword", () => {
       const r = inferModel("scanner", "Scan for patterns");
       assert.equal(r.model, "haiku");
-      assert.equal(r.effort, "low");
+      assert.equal(r.effort, undefined, "Haiku 4.5 does not support effort");
     });
 
     it("matches status keyword", () => {
       const r = inferModel("status-probe", "Report status of services");
       assert.equal(r.model, "haiku");
-      assert.equal(r.effort, "low");
+      assert.equal(r.effort, undefined, "Haiku 4.5 does not support effort");
     });
   });
 
@@ -146,7 +149,7 @@ describe("inferModel", () => {
       // "search" (Haiku) + "review" (Opus xhigh) — search matches first by priority
       const r = inferModel("search-reviewer", "Search and review code");
       assert.equal(r.model, "haiku", "Haiku priority highest");
-      assert.equal(r.effort, "low");
+      assert.equal(r.effort, undefined, "Haiku 4.5 does not support effort");
     });
 
     it("Opus max wins over Opus xhigh when both keywords present", () => {
@@ -174,7 +177,7 @@ describe("inferModel", () => {
       // "scan" (Haiku) + "debug" (Sonnet high) — scan matches first by Haiku priority
       const r = inferModel("scan-debugger", "Scan and debug subtle issues");
       assert.equal(r.model, "haiku");
-      assert.equal(r.effort, "low");
+      assert.equal(r.effort, undefined, "Haiku 4.5 does not support effort");
     });
   });
 
@@ -272,7 +275,7 @@ describe("fix", () => {
     assert.ok(results.skipped[0].reason.includes("already has model"));
   });
 
-  it("infers haiku+low for deploy-verifier", () => {
+  it("infers haiku without effort for deploy-verifier", () => {
     mkdirSync(join(tmp, ".claude", "agents"), { recursive: true });
     writeFileSync(
       join(tmp, ".claude", "agents", "deploy-verifier.md"),
@@ -281,7 +284,14 @@ describe("fix", () => {
 
     const results = fix(tmp);
     assert.equal(results.fixed[0].model, "haiku");
-    assert.equal(results.fixed[0].effort, "low");
+    assert.equal(results.fixed[0].effort, undefined, "Haiku 4.5 does not support effort");
+
+    // Critical regression guard: the file must NOT contain literal "effort: undefined"
+    // (the bug fixed by adding the `inferred.effort` check in fix.js guard).
+    const content = readFileSync(join(tmp, ".claude", "agents", "deploy-verifier.md"), "utf8");
+    assert.ok(content.includes("model: haiku"));
+    assert.ok(!content.includes("effort: undefined"), "must not write literal 'effort: undefined'");
+    assert.ok(!content.includes("effort: low"), "must not write effort: low — Haiku 4.5 does not support effort");
   });
 
   it("infers opus+xhigh for db-migrator (agentic coding)", () => {

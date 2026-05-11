@@ -5,16 +5,17 @@ import { join } from "node:path";
  * Infer the recommended model and effort based on agent/skill name and description.
  * @param {string} name
  * @param {string} description
- * @returns {{ model: string, effort: string, reason: string }}
+ * @returns {{ model: string, effort?: string, reason: string }} effort omitted when model is haiku (Haiku 4.5 does not support effort)
  */
 export function inferModel(name, description) {
   const text = `${name} ${description}`.toLowerCase();
 
-  // Tier 1 — Haiku
+  // Tier 1 — Haiku (no effort field — Haiku 4.5 does not support the effort parameter
+  // per Anthropic effort docs: https://platform.claude.com/docs/en/build-with-claude/effort)
   const haiku = ["explore", "search", "scan", "grep", "find", "discover", "verify", "health", "check", "status", "monitor"];
   for (const kw of haiku) {
     if (text.includes(kw)) {
-      return { model: "haiku", effort: "low", reason: `keyword "${kw}" → Tier 1 (search/verify)` };
+      return { model: "haiku", reason: `keyword "${kw}" → Tier 1 (search/verify, no effort on Haiku)` };
     }
   }
 
@@ -128,7 +129,10 @@ export function fix(projectRoot, options = {}) {
       const inferred = inferModel(name, desc);
 
       let updated = injectFrontmatterField(content, "model", inferred.model);
-      if (effort && !fields.effort) {
+      // Guard `inferred.effort` is mandatory: when inferModel returns no effort
+      // (Haiku tier), injecting `undefined` would write literal "effort: undefined"
+      // into the file. Only inject when an effort value is actually available.
+      if (effort && inferred.effort && !fields.effort) {
         updated = injectFrontmatterField(updated, "effort", inferred.effort);
       }
 
@@ -183,7 +187,8 @@ export function fix(projectRoot, options = {}) {
       const inferred = inferModel(dir.name, desc);
 
       let updated = injectFrontmatterField(content, "model", inferred.model);
-      if (effort && !fields.effort) {
+      // Same guard as agents branch — never inject "effort: undefined" for Haiku skills.
+      if (effort && inferred.effort && !fields.effort) {
         updated = injectFrontmatterField(updated, "effort", inferred.effort);
       }
 

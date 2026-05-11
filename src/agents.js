@@ -39,7 +39,6 @@ const HAIKU_EXPLORER = `---
 name: haiku-explorer
 description: Fast read-only codebase exploration agent for file search, code grep, pattern matching, reading file contents, checking project structure, and git history analysis. Never modifies files.
 model: haiku
-effort: low
 tools:
   - Read
   - Grep
