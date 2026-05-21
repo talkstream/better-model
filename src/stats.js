@@ -12,6 +12,7 @@ import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
 import { homedir as osHomedir } from "node:os";
 import { inferModel, parseFrontmatter } from "./fix.js";
+import { readProjectProfile } from "./init.js";
 
 /**
  * README target distribution for subagent dispatch — pinned to the README at
@@ -237,18 +238,21 @@ export function loadProjectAgents(projectRoot) {
 /**
  * Compute the expected model for a dispatch. Prefers `projectAgents` if the
  * subagent_type matches a loaded agent's frontmatter; falls back to inferModel
- * on the (name, description) pair.
+ * on the (name, description) pair. When the current project has a profile
+ * active (e.g. blockchain) it is forwarded to inferModel so the overlay
+ * keyword set is honored for inference-tier expectations.
  *
  * @param {string} subagent_type
  * @param {string} description
  * @param {Map<string,string>|null} projectAgents — null in --all-projects mode
+ * @param {string|null} [profile] — active profile, null in --all-projects mode
  * @returns {{model:string, source:"frontmatter"|"inference"}}
  */
-export function computeExpectedModel(subagent_type, description, projectAgents) {
+export function computeExpectedModel(subagent_type, description, projectAgents, profile) {
   if (projectAgents && projectAgents.has(subagent_type)) {
     return { model: projectAgents.get(subagent_type), source: "frontmatter" };
   }
-  const inferred = inferModel(subagent_type, description);
+  const inferred = inferModel(subagent_type, description, profile ?? undefined);
   return { model: inferred.model, source: "inference" };
 }
 
@@ -274,7 +278,7 @@ export function extractMainAgentModel(record) {
  * @param {string[]} files
  * @param {Date} from
  * @param {Date} to
- * @param {{projectAgents?: Map<string,string>|null, computeByType?: boolean}} [opts]
+ * @param {{projectAgents?: Map<string,string>|null, computeByType?: boolean, profile?: string|null}} [opts]
  * @returns {Promise<{
  *   mainCounts: {opus:number, sonnet:number, haiku:number, other:number},
  *   subagentCounts: {opus:number, sonnet:number, haiku:number, unknown:number},
@@ -288,7 +292,7 @@ export async function aggregateFiles(files, from, to, opts = {}) {
   const mainCounts = { opus: 0, sonnet: 0, haiku: 0, other: 0 };
   const subagentCounts = { opus: 0, sonnet: 0, haiku: 0, unknown: 0 };
   const byType = new Map();
-  const { projectAgents = null, computeByType = true } = opts;
+  const { projectAgents = null, computeByType = true, profile = null } = opts;
   let linesParsed = 0;
   let linesFailed = 0;
   for (const file of files) {
@@ -310,7 +314,7 @@ export async function aggregateFiles(files, from, to, opts = {}) {
         if (m in subagentCounts) subagentCounts[m]++;
         else subagentCounts.unknown++;
         if (!computeByType) continue;
-        addToByType(byType, dispatch, projectAgents);
+        addToByType(byType, dispatch, projectAgents, profile);
       }
     }
   }
@@ -337,8 +341,9 @@ export async function aggregateFiles(files, from, to, opts = {}) {
  * @param {Map<string,object>} byType
  * @param {{model:string, subagent_type:string, description:string}} dispatch
  * @param {Map<string,string>|null} projectAgents
+ * @param {string|null} profile — active profile, forwarded to inference
  */
-function addToByType(byType, dispatch, projectAgents) {
+function addToByType(byType, dispatch, projectAgents, profile) {
   const key = dispatch.subagent_type || "(empty)";
   let row = byType.get(key);
   if (!row) {
@@ -355,7 +360,7 @@ function addToByType(byType, dispatch, projectAgents) {
   row.models[bucket]++;
   // Deviation only computed for dispatches with a real model (not "unknown").
   if (bucket === "unknown") return;
-  const expected = computeExpectedModel(dispatch.subagent_type, dispatch.description, projectAgents);
+  const expected = computeExpectedModel(dispatch.subagent_type, dispatch.description, projectAgents, profile);
   if (expected.model !== dispatch.model) row.deviations++;
   if (row.expectationSource === null) {
     row.expectationSource = expected.source;
@@ -586,6 +591,7 @@ export async function runStats(opts) {
   let files = [];
   let scope = "";
   let projectAgents = null;
+  let profile = null;
 
   if (!existsSync(projectsRoot)) {
     console.log("Claude Code logs not found. Run a session first to generate data.");
@@ -614,6 +620,9 @@ export async function runStats(opts) {
     scope = cwdAbs;
     // Load current-project agent frontmatter for by-type expectation.
     projectAgents = loadProjectAgents(cwdAbs);
+    // Load current-project profile so blockchain-overlay agents (when active)
+    // are evaluated against the same keyword set the routing block declares.
+    profile = readProjectProfile(cwdAbs);
   }
 
   if (files.length === 0) {
@@ -621,7 +630,7 @@ export async function runStats(opts) {
     return 0;
   }
 
-  const agg = await aggregateFiles(files, from, to, { projectAgents });
+  const agg = await aggregateFiles(files, from, to, { projectAgents, profile });
   if (agg.linesParsed === 0 && agg.linesFailed > 0) {
     console.log("All session files unreadable. Schema may have changed — please file an issue with your Claude Code version.");
     return 1;

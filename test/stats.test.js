@@ -807,6 +807,45 @@ describe("stats — by-type aggregation", () => {
     assert.equal(row.expectationSource, "inference");
   });
 
+  // T-B3p: profile keywords forward through aggregateFiles → computeExpectedModel
+  it("forwards profile to inference: solidity-coder expected opus under blockchain profile", async () => {
+    // subagent_type "solidity-coder" with profile=blockchain → expected opus.
+    // If actual dispatch is sonnet, that's a deviation against the profile-aware expectation.
+    const cwd = "/test/proj-bp";
+    const r = {
+      type: "assistant",
+      isSidechain: false,
+      timestamp: "2026-05-09T10:00:00.000Z",
+      message: {
+        model: "claude-opus-4-7",
+        content: [{
+          type: "tool_use", id: "x", name: "Agent",
+          input: { description: "Write a contract", subagent_type: "solidity-coder", model: "sonnet" },
+        }],
+      },
+    };
+    const file = join(tmp, "session.jsonl");
+    writeFileSync(file, JSON.stringify(r) + "\n");
+    const agg = await aggregateFiles(
+      [file],
+      new Date("2026-05-05T00:00:00.000Z"),
+      new Date("2026-05-12T12:00:00.000Z"),
+      { projectAgents: null, profile: "blockchain" }
+    );
+    const row = agg.byType.get("solidity-coder");
+    assert.equal(row.total, 1);
+    assert.equal(row.deviations, 1, "sonnet actual vs opus expected (via profile) → 1 deviation");
+
+    // Same data without profile: expectation is default sonnet → 0 deviations.
+    const aggNoProfile = await aggregateFiles(
+      [file],
+      new Date("2026-05-05T00:00:00.000Z"),
+      new Date("2026-05-12T12:00:00.000Z"),
+      { projectAgents: null }
+    );
+    assert.equal(aggNoProfile.byType.get("solidity-coder").deviations, 0, "no profile → no deviation");
+  });
+
   // T-B3: frontmatter expectation overrides inference
   it("counts deviations against frontmatter when projectAgents provided", async () => {
     // Frontmatter says Explore → sonnet (matching session reality); zero deviation

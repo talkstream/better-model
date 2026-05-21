@@ -1,4 +1,5 @@
 import { getInstallStatus, getInstalledAgents } from "./detect.js";
+import { readProjectProfile } from "./init.js";
 
 /**
  * Print the current installation status of better-model.
@@ -11,6 +12,12 @@ export function status(projectRoot) {
     console.log("✓ better-model is installed.");
     console.log(`  Template: ${s.templatePath}`);
     console.log(`  Reference: ${s.claudeMdPath}`);
+    const activeProfile = readProjectProfile(projectRoot);
+    if (activeProfile) {
+      console.log(`  Profile: ${activeProfile} (keyword overlay active)`);
+    } else {
+      console.log("  Profile: (none)");
+    }
     const agents = getInstalledAgents(projectRoot);
     if (agents.length > 0) {
       console.log(`  Agents: ${agents.join(", ")}`);

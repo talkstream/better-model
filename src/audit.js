@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getInstallStatus } from "./detect.js";
 import { fix, printFixResults, parseFrontmatter } from "./fix.js";
+import { readProjectProfile } from "./init.js";
 import { gitAdd } from "./git.js";
 
 /**
@@ -17,7 +18,11 @@ export function audit(projectRoot, options = {}) {
       return;
     }
     console.log("Fixing .claude/ agents & skills — injecting model frontmatter...\n");
-    const results = fix(projectRoot);
+    const profile = readProjectProfile(projectRoot);
+    if (profile) {
+      console.log(`  Active profile: ${profile} — applying overlay keywords during inference.\n`);
+    }
+    const results = fix(projectRoot, { profile });
     printFixResults(results, false);
 
     // Auto git-add fixed files

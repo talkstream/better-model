@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.10.0] - 2026-05-21
+
+### New: `init --profile blockchain` — opt-in keyword overlay for smart-contract projects
+
+A **profile** in better-model is an opt-in domain-specific keyword overlay applied on top of the base routing rules. It is additive — it catches agents the base keyword set would route to default Sonnet, never demotes an agent's tier. Activation:
+
+```bash
+npx better-model init --profile blockchain
+```
+
+The blockchain profile covers both major smart-contract ecosystems:
+
+- **EVM family** — Solidity, EVM bytecode, audit tooling (Slither, Mythril)
+- **TON family** — FunC, Tact, Fift, TLB schemas, Jetton standard
+
+Keywords added by the profile (all route to Opus xhigh — Anthropic's recommended starting tier for agentic coding):
+
+| Keyword | Match style | Notes |
+|---|---|---|
+| `solidity`, `evm`, `slither`, `mythril`, `toncoin`, `jetton`, `tlb` | substring | distinctive vocabulary, no general-English collisions |
+| `func`, `tact`, `fift`, `contract` | word boundary | short keywords; word-boundary regex avoids matching `function`, `tactic`, `fifth`, `contractual`, etc. |
+
+Field data on Sonnet-vs-Opus performance for Solidity / FunC / Tact specifically is not yet available. The profile is provided as a convenience for users who already know they want Opus on their contract work — when we have measurements from real blockchain projects, we'll update the template at `templates/profiles/blockchain.md` with the actual delta.
+
+### Marker encoding (orthogonal to BLOCK_VERSION_MARKER)
+
+The active profile is encoded inside the routing block in `CLAUDE.md` as a separate metadata comment:
+
+```html
+<!-- better-model:start -->
+<!-- better-model block version: 0.10 -->
+<!-- better-model profile: blockchain -->
+## Model Routing (better-model)
+...
+<!-- better-model:end -->
+```
+
+Encoding the profile orthogonally to `BLOCK_VERSION_MARKER` means future block-version upgrades can preserve the user's profile choice automatically. Re-running `npx better-model init` without `--profile` preserves the existing marker; passing `--profile <other>` updates it; manually deleting the marker reverts to no profile on next init.
+
+### BLOCK_VERSION_MARKER bump: 0.7 → 0.10
+
+The routing block version marker is incremented to `0.10` (aligned with the npm version — we skip 0.8 and 0.9 in the block marker because the routing block itself did not change in v0.8 / v0.9, only observability around it did). On next `init`, every v0.7-installed project silently upgrades to v0.10. **This is invisible to users**: no manual action required, no behavior change without `--profile <name>`. Anything you wrote OUTSIDE the `<!-- better-model:start -->` / `<!-- better-model:end -->` markers is preserved verbatim. Content INSIDE those markers is owned by better-model and will be regenerated on each upgrade — if you want a custom routing rule, place it elsewhere in your CLAUDE.md.
+
+### Threading through the toolchain
+
+The active profile is threaded through every code path that calls `inferModel`:
+
+- `npx better-model audit --fix` reads the project profile and applies overlay keywords during frontmatter injection.
+- `npx better-model stats` reads the profile and uses it when computing the expected-model side of deviation detection. Profile-overlay agents that match (e.g. `solidity-coder → opus/xhigh`) no longer register as deviations against base inference.
+- `--all-projects` mode in stats does NOT read profile (it cannot resolve other projects' CLAUDE.md from the projects-hash directory); falls back to inference-only — same as the frontmatter-aware expectation in v0.9.0.
+
+### Tests
+
+39 new (198 → 237). Coverage:
+
+- 13 `inferModel` profile tests (Solidity vocabulary, TON vocabulary, priority ordering, word-boundary FP guards for `func`/`tact`/`fift`/`contract`, additive invariant, unknown profile, null/undefined profile).
+- 26 `init` profile tests (`buildRoutingBlock`, `readProfileFromBlock`, `readProjectProfile`, `parseInitArgs` parsing + error paths, `init()` fresh install with profile, re-init preserves existing profile, re-init with different `--profile` updates marker, v0.7 → v0.10 upgrade with and without profile, invalid-profile rejection without file modification).
+
+### What's not in v0.10.0
+
+- **Haiku keyword expansion** — Phase 3 observation window deferred (user manages own cadence). Will ship as v0.11 or v0.10.1 if field data shows under-routing.
+- **`code-reviewer` keyword split** — community feedback still gated.
+- **Additional profiles** — `wordpress`, `analytics`, `content` not justified by evidence (per Phase 4 scope memo). `blockchain` is the only domain with dedicated benchmarks (SolidityBench, CryptoBench).
+- **Skill template with `${CLAUDE_EFFORT}`** — Anthropic syntax stabilization still pending (~August 2026).
+- **Hook-based defense against `claude agents --model`** — engineering-feasible but its own scope.
+
 ## [0.9.0] - 2026-05-21
 
 ### New: per-subagent_type breakdown + deviation reporting in `stats`

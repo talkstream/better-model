@@ -238,6 +238,146 @@ describe("inferModel", () => {
       assert.match(r.reason, /max|frontier/);
     });
   });
+
+  describe("blockchain profile overlay", () => {
+    it("does NOT activate blockchain keywords without profile arg", () => {
+      // Without profile, "solidity-coder" falls back to default Sonnet medium.
+      const r = inferModel("solidity-coder", "Write a Solidity contract");
+      assert.equal(r.model, "sonnet");
+      assert.equal(r.effort, "medium");
+    });
+
+    it("routes Solidity-vocabulary agents to Opus xhigh when profile=blockchain", () => {
+      for (const name of ["solidity-coder", "evm-coder", "slither-runner", "mythril-runner"]) {
+        const r = inferModel(name, "", "blockchain");
+        assert.equal(r.model, "opus", `${name}: expected opus`);
+        assert.equal(r.effort, "xhigh", `${name}: expected xhigh`);
+        assert.match(r.reason, /blockchain profile/, `${name}: reason mentions profile`);
+      }
+    });
+
+    it("routes TON-vocabulary agents to Opus xhigh when profile=blockchain", () => {
+      for (const name of ["toncoin-bridge", "jetton-wrapper", "tlb-schema-coder"]) {
+        const r = inferModel(name, "", "blockchain");
+        assert.equal(r.model, "opus", `${name}: expected opus`);
+        assert.equal(r.effort, "xhigh", `${name}: expected xhigh`);
+        assert.match(r.reason, /blockchain profile/);
+      }
+    });
+
+    it("Tier 1 Haiku wins over blockchain profile (search verbs still route to Haiku)", () => {
+      // "explore-solidity-contracts" → "explore" matches Tier 1 first.
+      const r = inferModel("explore-solidity-contracts", "", "blockchain");
+      assert.equal(r.model, "haiku");
+      assert.match(r.reason, /Tier 1/);
+    });
+
+    it("Tier 3 max wins over blockchain profile (architecture still routes to max)", () => {
+      const r = inferModel("solidity-architect", "Design contract system", "blockchain");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "max");
+      assert.match(r.reason, /max|frontier/);
+    });
+
+    it("Tier 3 xhigh base wins over blockchain profile (audit/review still attribute to base)", () => {
+      // "solidity-auditor" matches base "audit" before profile "solidity".
+      const r = inferModel("solidity-auditor", "Audit a Solidity contract", "blockchain");
+      assert.equal(r.model, "opus");
+      assert.equal(r.effort, "xhigh");
+      // Reason should mention "audit" (base), not blockchain profile.
+      assert.match(r.reason, /audit/);
+      assert.doesNotMatch(r.reason, /blockchain profile/);
+    });
+
+    it("word boundary: 'func' matches FunC vocabulary but NOT 'function'", () => {
+      // Positive: FunC contract → matches.
+      const positive = inferModel("func-contract-coder", "", "blockchain");
+      assert.equal(positive.model, "opus");
+      assert.match(positive.reason, /blockchain profile/);
+
+      // Negative: "function-coder" should fall through (no blockchain match).
+      const negative = inferModel("function-coder", "Generate a function", "blockchain");
+      assert.equal(negative.model, "sonnet");
+      assert.match(negative.reason, /generate|safe default/);
+    });
+
+    it("word boundary: 'tact' matches Tact vocabulary but NOT 'tactic'/'contact'/'tactical'", () => {
+      const positive = inferModel("tact-coder", "Write a Tact contract", "blockchain");
+      assert.equal(positive.model, "opus");
+
+      for (const fp of ["tactical-planner", "contact-form-coder", "tactic-analyzer"]) {
+        const r = inferModel(fp, "", "blockchain");
+        assert.equal(r.model, "sonnet", `${fp}: should NOT match blockchain (false positive)`);
+      }
+    });
+
+    it("word boundary: 'fift' matches Fift vocabulary but NOT 'fifth'/'fifty'", () => {
+      const positive = inferModel("fift-coder", "Write Fift code", "blockchain");
+      assert.equal(positive.model, "opus");
+
+      for (const fp of ["fifth-element-coder", "fifty-coder"]) {
+        const r = inferModel(fp, "", "blockchain");
+        assert.equal(r.model, "sonnet", `${fp}: should NOT match blockchain (false positive)`);
+      }
+    });
+
+    it("word boundary: 'contract' matches blockchain vocabulary but NOT 'contractual'/'subcontract'", () => {
+      const positive = inferModel("contract-coder", "Write a contract", "blockchain");
+      assert.equal(positive.model, "opus");
+
+      for (const fp of ["contractual-analyzer", "subcontract-tracker"]) {
+        const r = inferModel(fp, "", "blockchain");
+        assert.equal(r.model, "sonnet", `${fp}: should NOT match blockchain (false positive)`);
+      }
+    });
+
+    it("additive invariant: profile NEVER demotes an existing tier", () => {
+      // For each baseline (name, description), result-with-profile must be
+      // the same model-or-higher than result-without-profile. Tier ordering:
+      // haiku < sonnet/medium < sonnet/high < opus/xhigh < opus/max.
+      const tierRank = (r) => {
+        if (r.model === "haiku") return 1;
+        if (r.model === "sonnet" && r.effort === "medium") return 2;
+        if (r.model === "sonnet" && r.effort === "high") return 3;
+        if (r.model === "opus" && r.effort === "xhigh") return 4;
+        if (r.model === "opus" && r.effort === "max") return 5;
+        return 0;
+      };
+      const cases = [
+        ["solidity-coder", ""],
+        ["function-coder", "Generate a function"],
+        ["code-reviewer", "Review changes"],
+        ["architect-solidity", "Design contracts"],
+        ["explore-contracts", "Search a codebase"],
+        ["debug-jetton", "Debug a token contract"],
+        ["build-evm", "Build deployment pipeline"],
+      ];
+      for (const [name, desc] of cases) {
+        const base = inferModel(name, desc);
+        const profiled = inferModel(name, desc, "blockchain");
+        assert.ok(
+          tierRank(profiled) >= tierRank(base),
+          `additivity violated for ("${name}", "${desc}"): base=${base.model}/${base.effort ?? "-"}, profile=${profiled.model}/${profiled.effort ?? "-"}`
+        );
+      }
+    });
+
+    it("unknown profile value is ignored (falls back to base inference)", () => {
+      // Typo / future profile name — must not crash; behaves as no profile.
+      const r = inferModel("solidity-coder", "", "ethereum");
+      assert.equal(r.model, "sonnet");
+      assert.equal(r.effort, "medium");
+    });
+
+    it("null and undefined profile values are treated as no profile", () => {
+      // Defensive: callers may pass either; both must skip the overlay.
+      for (const profile of [null, undefined]) {
+        const r = inferModel("solidity-coder", "", profile);
+        assert.equal(r.model, "sonnet", `profile=${profile}: expected sonnet`);
+        assert.equal(r.effort, "medium", `profile=${profile}: expected medium`);
+      }
+    });
+  });
 });
 
 describe("injectFrontmatterField", () => {

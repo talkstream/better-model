@@ -4,7 +4,17 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { init, isStaleRoutingBlock, ROUTING_BLOCK, BLOCK_START, BLOCK_END } from "../src/init.js";
+import {
+  init,
+  isStaleRoutingBlock,
+  ROUTING_BLOCK,
+  BLOCK_START,
+  BLOCK_END,
+  buildRoutingBlock,
+  readProfileFromBlock,
+  readProjectProfile,
+  parseInitArgs,
+} from "../src/init.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const templateSrc = join(__dirname, "..", "templates", "BETTER-MODEL.md");
@@ -307,5 +317,234 @@ describe("init", () => {
     );
     const blocks = content.match(/<!-- better-model:start -->/g);
     assert.equal(blocks.length, 1, "exactly one routing block");
+  });
+});
+
+describe("init — profile support (v0.10)", () => {
+  let tmp;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "bm-init-profile-"));
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  describe("buildRoutingBlock", () => {
+    it("with null/undefined returns block WITHOUT profile marker", () => {
+      const a = buildRoutingBlock(null);
+      const b = buildRoutingBlock();
+      assert.equal(a, b);
+      assert.ok(!a.includes("better-model profile:"), "no profile marker");
+      assert.ok(a.includes("better-model block version: 0.10"), "current version");
+    });
+
+    it("with profile name embeds profile marker", () => {
+      const block = buildRoutingBlock("blockchain");
+      assert.ok(block.includes("<!-- better-model profile: blockchain -->"), "profile marker present");
+      assert.ok(block.includes("better-model block version: 0.10"), "version still present");
+    });
+  });
+
+  describe("readProfileFromBlock", () => {
+    it("returns null for content without any block markers", () => {
+      assert.equal(readProfileFromBlock("# random doc\n\nno markers here"), null);
+    });
+
+    it("returns null for block without a profile marker", () => {
+      const content = `prefix\n${ROUTING_BLOCK}\nsuffix`;
+      assert.equal(readProfileFromBlock(content), null);
+    });
+
+    it("returns profile name when marker is inside the block", () => {
+      const content = `prefix\n${buildRoutingBlock("blockchain")}\nsuffix`;
+      assert.equal(readProfileFromBlock(content), "blockchain");
+    });
+
+    it("ignores profile-marker-shaped strings OUTSIDE the block markers", () => {
+      // Pathological: a stray marker pasted into user prose before the actual
+      // block. readProfileFromBlock scans only inside markers.
+      const content = `<!-- better-model profile: malicious -->\n${ROUTING_BLOCK}`;
+      assert.equal(readProfileFromBlock(content), null);
+    });
+
+    it("returns null on non-string input (defensive)", () => {
+      assert.equal(readProfileFromBlock(null), null);
+      assert.equal(readProfileFromBlock(undefined), null);
+      assert.equal(readProfileFromBlock(42), null);
+    });
+  });
+
+  describe("readProjectProfile", () => {
+    it("returns null when CLAUDE.md missing", () => {
+      assert.equal(readProjectProfile(tmp), null);
+    });
+
+    it("returns null when CLAUDE.md exists but no routing block", () => {
+      writeFileSync(join(tmp, "CLAUDE.md"), "# Some other CLAUDE.md content\n");
+      assert.equal(readProjectProfile(tmp), null);
+    });
+
+    it("returns profile name from a project's installed routing block", () => {
+      writeFileSync(join(tmp, "CLAUDE.md"), `# Project\n\n${buildRoutingBlock("blockchain")}\n`);
+      assert.equal(readProjectProfile(tmp), "blockchain");
+    });
+  });
+
+  describe("parseInitArgs", () => {
+    it("parses --soft alone", () => {
+      const r = parseInitArgs(["--soft"]);
+      assert.deepEqual(r, { ok: true, opts: { soft: true } });
+    });
+
+    it("parses --profile space form", () => {
+      const r = parseInitArgs(["--profile", "blockchain"]);
+      assert.deepEqual(r, { ok: true, opts: { soft: false, profile: "blockchain" } });
+    });
+
+    it("parses --profile=value form", () => {
+      const r = parseInitArgs(["--profile=blockchain"]);
+      assert.deepEqual(r, { ok: true, opts: { soft: false, profile: "blockchain" } });
+    });
+
+    it("parses --soft and --profile together (order independent)", () => {
+      const a = parseInitArgs(["--soft", "--profile", "blockchain"]);
+      const b = parseInitArgs(["--profile", "blockchain", "--soft"]);
+      assert.equal(a.opts.profile, "blockchain");
+      assert.equal(a.opts.soft, true);
+      assert.equal(b.opts.profile, "blockchain");
+      assert.equal(b.opts.soft, true);
+    });
+
+    it("rejects --profile with missing value", () => {
+      const r = parseInitArgs(["--profile"]);
+      assert.equal(r.ok, false);
+      assert.match(r.error, /Missing value/);
+    });
+
+    it("rejects --profile followed by another flag (not a value)", () => {
+      const r = parseInitArgs(["--profile", "--soft"]);
+      assert.equal(r.ok, false);
+      assert.match(r.error, /Missing value/);
+    });
+
+    it("rejects --profile= empty value", () => {
+      const r = parseInitArgs(["--profile="]);
+      assert.equal(r.ok, false);
+      assert.match(r.error, /Missing value/);
+    });
+
+    it("rejects invalid profile slug (uppercase / special chars)", () => {
+      for (const bad of ["Blockchain", "block_chain", "block chain", "-blockchain", "1block"]) {
+        const r = parseInitArgs(["--profile", bad]);
+        assert.equal(r.ok, false, `expected reject for "${bad}"`);
+        assert.match(r.error, /Invalid `--profile`/);
+      }
+    });
+
+    it("rejects unknown flag with helpful error", () => {
+      const r = parseInitArgs(["--unknown"]);
+      assert.equal(r.ok, false);
+      assert.match(r.error, /Unknown flag/);
+    });
+
+    it("rejects duplicate --profile flag (last-wins is a footgun, not a feature)", () => {
+      for (const args of [
+        ["--profile", "blockchain", "--profile", "ton"],
+        ["--profile=blockchain", "--profile=ton"],
+        ["--profile", "blockchain", "--profile=ton"],
+      ]) {
+        const r = parseInitArgs(args);
+        assert.equal(r.ok, false, `expected rejection for ${args.join(" ")}`);
+        assert.match(r.error, /Duplicate `--profile`/);
+      }
+    });
+  });
+
+  describe("init() with profile option", () => {
+    function setupProject(extraSetup) {
+      // Minimal project skeleton: empty CLAUDE.md + .claude dir + a templates/BETTER-MODEL.md
+      // Mirror the existing test pattern.
+      writeFileSync(join(tmp, "CLAUDE.md"), "# Project\n");
+      mkdirSync(join(tmp, "docs"), { recursive: true });
+      copyFileSync(templateSrc, join(tmp, "docs", "BETTER-MODEL.md"));
+      if (extraSetup) extraSetup(tmp);
+    }
+
+    it("fresh install with profile=blockchain encodes profile marker", () => {
+      setupProject();
+      init(tmp, { profile: "blockchain" });
+      const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+      assert.ok(content.includes("<!-- better-model profile: blockchain -->"));
+      assert.ok(content.includes("better-model block version: 0.10"));
+    });
+
+    it("fresh install without profile has no profile marker", () => {
+      setupProject();
+      init(tmp);
+      const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+      assert.ok(!content.includes("better-model profile:"));
+    });
+
+    it("re-init with no --profile preserves existing profile marker", () => {
+      setupProject();
+      init(tmp, { profile: "blockchain" });
+      init(tmp); // re-run without --profile
+      const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+      assert.ok(
+        content.includes("<!-- better-model profile: blockchain -->"),
+        "existing profile should be preserved on re-init"
+      );
+    });
+
+    it("re-init with explicit --profile updates the marker", () => {
+      setupProject();
+      init(tmp, { profile: "blockchain" });
+      // Re-run with a different profile to verify override behavior.
+      init(tmp, { profile: "ton" });
+      const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+      assert.ok(content.includes("<!-- better-model profile: ton -->"));
+      assert.ok(!content.includes("<!-- better-model profile: blockchain -->"));
+    });
+
+    it("init on v0.7-style block upgrades to v0.10 with no profile", () => {
+      // Simulate v0.7 install: block with v0.7 marker (now stale).
+      const v07Block = `<!-- better-model:start -->
+<!-- better-model block version: 0.7 -->
+## Model Routing (better-model)
+...
+<!-- better-model:end -->`;
+      setupProject((root) => {
+        writeFileSync(join(root, "CLAUDE.md"), `# Project\n\n${v07Block}\n`);
+      });
+      init(tmp);
+      const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+      assert.ok(content.includes("better-model block version: 0.10"));
+      assert.ok(!content.includes("better-model profile:"));
+      assert.ok(!content.includes("block version: 0.7"));
+    });
+
+    it("init on v0.7-style block with --profile sets profile during upgrade", () => {
+      const v07Block = `<!-- better-model:start -->
+<!-- better-model block version: 0.7 -->
+## Model Routing (better-model)
+...
+<!-- better-model:end -->`;
+      setupProject((root) => {
+        writeFileSync(join(root, "CLAUDE.md"), `# Project\n\n${v07Block}\n`);
+      });
+      init(tmp, { profile: "blockchain" });
+      const content = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+      assert.ok(content.includes("better-model block version: 0.10"));
+      assert.ok(content.includes("<!-- better-model profile: blockchain -->"));
+    });
+
+    it("rejects invalid profile string with no file modification", () => {
+      setupProject();
+      const before = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+      init(tmp, { profile: "Bad Profile!" });
+      const after = readFileSync(join(tmp, "CLAUDE.md"), "utf8");
+      // Bad profile → init early-returns; CLAUDE.md untouched.
+      assert.equal(after, before);
+    });
   });
 });

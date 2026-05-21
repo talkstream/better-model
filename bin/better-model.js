@@ -28,6 +28,8 @@ Commands:
                          injects model frontmatter, adds routing block to CLAUDE.md
   init --soft            Install soft mode — decision matrix as reference only,
                          no agents created
+  init --profile <name>  Activate a domain-specific keyword overlay (additive,
+                         never demotes existing tiers). Supported: blockchain
   reset                  Remove better-model and restore defaults
   status                 Show current installation status
   audit                  Check .claude/agents/ and skills for missing model settings
@@ -61,8 +63,13 @@ async function main() {
 
   switch (command) {
     case "init": {
-      const { init } = await import("../src/init.js");
-      init(projectRoot, { soft: flags.has("--soft") });
+      const { init, parseInitArgs } = await import("../src/init.js");
+      const parsed = parseInitArgs(args.slice(1));
+      if (!parsed.ok) {
+        console.error(parsed.error);
+        process.exit(1);
+      }
+      init(projectRoot, parsed.opts);
       break;
     }
     case "reset": {

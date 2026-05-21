@@ -3,11 +3,18 @@ import { join } from "node:path";
 
 /**
  * Infer the recommended model and effort based on agent/skill name and description.
+ *
+ * `profile` is an optional opt-in overlay that adds domain-specific keywords on
+ * top of the base tiers. Currently supported: `"blockchain"` (Solidity + TON).
+ * Profile keywords are ALWAYS additive — they never demote an existing tier;
+ * they only catch agents the base keyword set would route to default Sonnet.
+ *
  * @param {string} name
  * @param {string} description
+ * @param {string} [profile] — optional profile overlay; `"blockchain"` supported
  * @returns {{ model: string, effort?: string, reason: string }} effort omitted when model is haiku (Haiku 4.5 does not support effort)
  */
-export function inferModel(name, description) {
+export function inferModel(name, description, profile) {
   const text = `${name} ${description}`.toLowerCase();
 
   // Tier 1 — Haiku (no effort field — Haiku 4.5 does not support the effort parameter
@@ -42,6 +49,37 @@ export function inferModel(name, description) {
   for (const kw of opusXhigh) {
     if (text.includes(kw)) {
       return { model: "opus", effort: "xhigh", reason: `keyword "${kw}" → Tier 3 xhigh (agentic coding)` };
+    }
+  }
+
+  // Profile overlay — blockchain (Solidity + TON ecosystem). Additive only:
+  // checked AFTER Tier 1 Haiku, Tier 3 max, and Tier 3 xhigh base — so search
+  // verbs, architectural keywords, and audit/migrate/review still win their
+  // respective tiers. Profile keywords lift the remaining default-Sonnet
+  // agents to Opus xhigh, matching the agentic-coding tier.
+  //
+  // `auditor` is intentionally omitted from this list: it is already covered
+  // by the base "audit" substring check above, and inserting it here would
+  // never trigger.
+  if (profile === "blockchain") {
+    // Distinctive blockchain vocabulary — substring match is safe (low FP risk
+    // against general English / general coding).
+    const blockchainSubstring = ["solidity", "evm", "slither", "mythril", "toncoin", "jetton", "tlb"];
+    for (const kw of blockchainSubstring) {
+      if (text.includes(kw)) {
+        return { model: "opus", effort: "xhigh", reason: `keyword "${kw}" → Tier 3 xhigh (blockchain profile)` };
+      }
+    }
+    // Short keywords that substring-match common English words: "func" inside
+    // "function", "tact" inside "tactic"/"contact", "fift" inside "fifth",
+    // "contract" inside "contractual"/"subcontract". Word-boundary regex
+    // (non-alphanumeric on both sides) avoids these false positives.
+    const blockchainWordBoundary = ["func", "tact", "fift", "contract"];
+    for (const kw of blockchainWordBoundary) {
+      const re = new RegExp(`(^|[^a-z0-9])${kw}([^a-z0-9]|$)`, "i");
+      if (re.test(text)) {
+        return { model: "opus", effort: "xhigh", reason: `keyword "${kw}" → Tier 3 xhigh (blockchain profile)` };
+      }
     }
   }
 
@@ -108,12 +146,18 @@ export function injectFrontmatterField(content, field, value) {
 
 /**
  * Fix agents and skills by injecting model (and optionally effort) frontmatter.
+ *
+ * `profile` activates a domain-specific keyword overlay in `inferModel` so
+ * blockchain-vocabulary agents route to Opus xhigh in blockchain-profile
+ * projects. Caller is expected to pass the project's active profile (from
+ * the routing block in CLAUDE.md); `fix` does not parse CLAUDE.md itself.
+ *
  * @param {string} projectRoot
- * @param {{ dryRun?: boolean, effort?: boolean }} options
+ * @param {{ dryRun?: boolean, effort?: boolean, profile?: string }} options
  * @returns {{ fixed: Array<{file: string, model: string, effort?: string, reason: string}>, skipped: Array<{file: string, reason: string}> }}
  */
 export function fix(projectRoot, options = {}) {
-  const { dryRun = false, effort = true } = options;
+  const { dryRun = false, effort = true, profile } = options;
   const fixed = [];
   const skipped = [];
 
@@ -133,7 +177,7 @@ export function fix(projectRoot, options = {}) {
 
       const name = file.replace(".md", "");
       const desc = fields.description || "";
-      const inferred = inferModel(name, desc);
+      const inferred = inferModel(name, desc, profile);
 
       let updated = injectFrontmatterField(content, "model", inferred.model);
       // Guard `inferred.effort` is mandatory: when inferModel returns no effort
@@ -191,7 +235,7 @@ export function fix(projectRoot, options = {}) {
       }
 
       const desc = fields.description || "";
-      const inferred = inferModel(dir.name, desc);
+      const inferred = inferModel(dir.name, desc, profile);
 
       let updated = injectFrontmatterField(content, "model", inferred.model);
       // Same guard as agents branch — never inject "effort: undefined" for Haiku skills.

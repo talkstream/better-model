@@ -250,12 +250,27 @@ Agent() calls with subagent_type=code-reviewer — model: "sonnet", effort: "hig
 > [!TIP]
 > In a [field test](https://github.com/talkstream/better-model), a Claude Code session read the decision matrix in soft mode and **proactively updated agent configs on its own** — applying the correct model to all 8 agents and skills without `audit --fix` being run.
 
+## Profiles
+
+A **profile** in better-model is an opt-in keyword overlay that adds domain-specific vocabulary on top of the base routing rules. It is *additive only*: it never demotes an agent's tier, only catches agents the base keyword set would route to default Sonnet. Currently one profile ships.
+
+| Profile | Activate | Covers | Adds keywords (Tier 3 xhigh) |
+|---|---|---|---|
+| `blockchain` | `npx better-model init --profile blockchain` | EVM family (Solidity) and TON family (FunC, Tact, Fift) | `solidity`, `evm`, `slither`, `mythril`, `toncoin`, `jetton`, `tlb`, plus word-boundary matches for `func`, `tact`, `fift`, `contract` |
+
+Profile choice is encoded inside the routing block in `CLAUDE.md` as a metadata comment (`<!-- better-model profile: blockchain -->`), orthogonal to the block-version marker. Re-running `init` without `--profile` preserves your existing choice; passing `--profile <other>` updates it.
+
+**On efficacy claims.** We don't yet have field measurements comparing Sonnet vs Opus on Solidity / FunC / Tact specifically. The blockchain profile is a convenience for users who already know they want Opus on their contract work — when field data exists, we'll update the profile template at [`templates/profiles/blockchain.md`](templates/profiles/blockchain.md) with the actual delta.
+
+**Why blockchain is the only profile (for now).** `templates/BETTER-MODEL.md` and our field-data analysis both point to **task complexity** as the dominant routing axis, with domain as a marginal secondary signal. Most domain presets (`wordpress`, `analytics`, `content`) risk suppressing Opus on genuinely complex work without a corresponding quality measurement. Blockchain is the one domain with dedicated benchmarks ([SolidityBench](https://blog.iqai.com/soliditybench-by-iq-the-first-leaderboard-for-evaluating-llm-solidity-code-generation/), [CryptoBench](https://arxiv.org/pdf/2512.00417)) suggesting a genuinely distinct capability footprint — different enough from general coding to warrant separate routing treatment.
+
 ## Commands
 
 | Command | Description |
 |---|---|
 | `npx better-model init` | Install with enforcement (default) |
 | `npx better-model init --soft` | Install soft mode — reference only |
+| `npx better-model init --profile <name>` | Activate a domain-specific keyword overlay (`blockchain` currently supported) |
 | `npx better-model audit` | Report agents/skills missing model settings |
 | `npx better-model audit --fix` | Auto-inject model/effort frontmatter |
 | `npx better-model stats` | Show recent Agent-call model distribution (last 7 days) |

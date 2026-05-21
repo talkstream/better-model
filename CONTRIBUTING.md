@@ -12,6 +12,21 @@ The decision matrix in `templates/BETTER-MODEL.md` is the core of this project. 
 
 Anecdotal reports are welcome as supporting evidence but are not sufficient on their own to change the matrix.
 
+## Profiles
+
+A *profile* (introduced in v0.10.0) is an opt-in keyword overlay applied on top of the base inference engine — see [`templates/profiles/`](templates/profiles/) for shipped profiles.
+
+Proposing a new profile or change requires:
+
+1. **The domain** — a clearly delimited problem area (e.g. one language ecosystem, not "web apps in general").
+2. **The evidence** — at least one published benchmark or reproducible measurement showing the domain's coding tasks deserve a different tier than the base routing implies. We are skeptical of profiles by default — see the v0.10.0 README "Why blockchain is the only profile (for now)" for the bar.
+3. **The keyword set** — distinctive vocabulary with low false-positive risk. Short keywords (≤4 chars) that substring-match common English (`func`, `tact`) require word-boundary regex matching + an FP regression test.
+4. **The framing** — profiles that lack head-to-head efficacy measurements ship as "convenience presets" without efficiency claims, per the v0.10.0 `blockchain` precedent.
+
+Profiles that fail the FP regression suite or that demote any existing tier are rejected by CI — `inferModel`'s additivity invariant is enforced by `test/fix.test.js`.
+
+Maintenance: profile keyword tables are reviewed each minor release alongside the main inference engine. A profile whose evidence base weakens (benchmark withdrawn, Anthropic guidance contradicts it) is sunset in the next minor release with a deprecation warning in `init` output, leaving user files untouched per the `reset` invariant.
+
 ## Development
 
 ```bash

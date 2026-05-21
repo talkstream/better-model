@@ -15,11 +15,32 @@ const OLD_REFERENCE_LINE = `→ **[Model Selection Guide](docs/${TEMPLATE_FILE})
 
 // Every ROUTING_BLOCK carries a version marker so future upgrades can detect
 // a stale block by a stable identifier, not by incidental content like effort names.
-const CURRENT_BLOCK_VERSION = "0.7";
+const CURRENT_BLOCK_VERSION = "0.10";
 const BLOCK_VERSION_MARKER = `<!-- better-model block version: ${CURRENT_BLOCK_VERSION} -->`;
 
-const ROUTING_BLOCK = `${BLOCK_START}
-${BLOCK_VERSION_MARKER}
+// Profiles are an opt-in keyword overlay applied on top of the base routing
+// rules (see src/fix.js inferModel). The active profile is encoded inside the
+// routing-block markers as a separate metadata comment, orthogonal to
+// BLOCK_VERSION_MARKER, so block-version upgrades preserve profile choice.
+const PROFILE_MARKER_PREFIX = "<!-- better-model profile: ";
+const PROFILE_MARKER_SUFFIX = " -->";
+// Validation: profile names are URL-safe ASCII slugs to keep them grep-friendly
+// and avoid markdown-rendering surprises.
+const VALID_PROFILE_RE = /^[a-z][a-z0-9-]{0,30}$/;
+// Currently supported profiles. Unknown values are accepted at the marker
+// level (forward compat) but ignored by inferModel until a release adds them.
+const KNOWN_PROFILES = ["blockchain"];
+
+/**
+ * Build the routing block for the given profile. Pass `null` / `undefined` to
+ * emit a block without a profile marker (the default).
+ * @param {string|null|undefined} profile
+ * @returns {string}
+ */
+export function buildRoutingBlock(profile) {
+  const profileLine = profile ? `\n${PROFILE_MARKER_PREFIX}${profile}${PROFILE_MARKER_SUFFIX}` : "";
+  return `${BLOCK_START}
+${BLOCK_VERSION_MARKER}${profileLine}
 ## Model Routing (better-model)
 
 **CRITICAL**: When spawning subagents via the Agent tool, ALWAYS set the \`model\` parameter (and \`effort\` for Sonnet/Opus — Haiku 4.5 does not support effort):
@@ -32,8 +53,53 @@ Default to \`model: "sonnet", effort: "medium"\` when unsure.
 Avoid Opus on >500K context — known lost-in-the-middle regression.
 See [full decision matrix](docs/${TEMPLATE_FILE}).
 ${BLOCK_END}`;
+}
 
-export { BLOCK_START, BLOCK_END, ROUTING_BLOCK, BLOCK_VERSION_MARKER };
+// Backward-compat alias for callers/tests that just want the default block.
+const ROUTING_BLOCK = buildRoutingBlock(null);
+
+/**
+ * Read the active profile (if any) directly from the project's CLAUDE.md.
+ * Thin wrapper around readProfileFromBlock for callers that have a project
+ * root but not the file contents.
+ *
+ * Used by fix(), audit, and stats to thread the profile through inferModel
+ * without exposing block-marker parsing details to those modules.
+ *
+ * @param {string} projectRoot
+ * @returns {string|null}
+ */
+export function readProjectProfile(projectRoot) {
+  const claudeMdPath = join(projectRoot, CLAUDE_MD);
+  if (!existsSync(claudeMdPath)) return null;
+  let content;
+  try {
+    content = readFileSync(claudeMdPath, "utf8");
+  } catch {
+    return null;
+  }
+  return readProfileFromBlock(content);
+}
+
+/**
+ * Extract the active profile (if any) from a CLAUDE.md content string. Returns
+ * the profile name as a lowercase slug, or `null` if no profile marker is
+ * present (or the block markers themselves are missing/malformed).
+ * @param {string} content — full CLAUDE.md content
+ * @returns {string|null}
+ */
+export function readProfileFromBlock(content) {
+  if (typeof content !== "string") return null;
+  const startIdx = content.indexOf(BLOCK_START);
+  if (startIdx === -1) return null;
+  const endIdx = content.indexOf(BLOCK_END, startIdx);
+  if (endIdx === -1) return null;
+  const block = content.slice(startIdx, endIdx);
+  const m = block.match(/<!-- better-model profile: ([a-z][a-z0-9-]{0,30}) -->/);
+  return m ? m[1] : null;
+}
+
+export { BLOCK_START, BLOCK_END, ROUTING_BLOCK, BLOCK_VERSION_MARKER, KNOWN_PROFILES, VALID_PROFILE_RE };
 
 /**
  * Detect a routing block that should be upgraded to the current version.
@@ -59,24 +125,42 @@ export function isStaleRoutingBlock(content) {
 
 /**
  * Replace the existing routing block (identified by start/end markers)
- * with the current ROUTING_BLOCK. Assumes the caller has already verified
- * both markers are present.
+ * with the current routing block. Assumes the caller has already verified
+ * both markers are present. The `profile` arg controls the rebuilt block:
+ *   - `undefined` (default): preserve any profile encoded in the existing block
+ *   - `null`: explicitly remove any profile (write a no-profile block)
+ *   - string: explicit profile name; overrides any existing marker
  * @param {string} content
+ * @param {string|null} [profile]
  * @returns {string}
  */
-function replaceRoutingBlock(content) {
+function replaceRoutingBlock(content, profile) {
   const startIdx = content.indexOf(BLOCK_START);
   const endIdx = content.indexOf(BLOCK_END, startIdx) + BLOCK_END.length;
-  return content.slice(0, startIdx) + ROUTING_BLOCK + content.slice(endIdx);
+  const effective = profile === undefined ? readProfileFromBlock(content) : profile;
+  return content.slice(0, startIdx) + buildRoutingBlock(effective) + content.slice(endIdx);
 }
 
 /**
  * Install better-model into the target project.
  * @param {string} projectRoot
- * @param {{ soft?: boolean }} options
+ * @param {{ soft?: boolean, profile?: string|null }} options
+ *   - `soft`: install matrix only, skip agents/frontmatter enforcement
+ *   - `profile`: opt-in keyword overlay (e.g. `"blockchain"`). Omit to leave
+ *     existing profile choice unchanged on re-install; pass an explicit string
+ *     to set/override. `null` is reserved for an explicit clear (future use).
  */
 export function init(projectRoot, options = {}) {
-  const { soft = false } = options;
+  let { soft = false, profile } = options;
+  // Normalize empty string to undefined so the preserve-existing path is taken
+  // (rather than the silent-clear path that empty string would otherwise hit).
+  // The CLI parser already rejects `""`; this guard protects programmatic callers.
+  if (profile === "") profile = undefined;
+  // Validate profile shape if provided.
+  if (typeof profile === "string" && !VALID_PROFILE_RE.test(profile)) {
+    console.log(`✗ Invalid \`--profile\` value: \`${profile}\` — must be a lowercase ASCII slug (a-z, 0-9, hyphen).`);
+    return;
+  }
   const status = getInstallStatus(projectRoot);
   const touchedFiles = [];
 
@@ -84,21 +168,38 @@ export function init(projectRoot, options = {}) {
     console.log("✓ better-model is already installed.");
     console.log(`  Template: ${status.templatePath}`);
     console.log(`  Reference in: ${status.claudeMdPath}`);
+    // Surface profile state up-front so users running re-init can see it.
+    const visibleProfile = readProjectProfile(projectRoot);
+    if (visibleProfile && profile === undefined) {
+      console.log(`  Profile: ${visibleProfile} (preserved on re-init)`);
+    }
 
     // Upgrade CLAUDE.md in three paths:
     //   1. v0.4.x single-line reference → current routing block
     //   2. v0.5.x routing block (no xhigh) → current routing block
     //   3. v0.6.x routing block (haiku effort: low, unsupported) → current routing block
+    //   4. v0.7.x routing block (no profile metadata) → current routing block
+    // In all cases: if `profile` option was passed explicitly, apply it;
+    // otherwise preserve any existing profile marker.
     const claudeMdPath = join(projectRoot, CLAUDE_MD);
     if (existsSync(claudeMdPath)) {
       let content = readFileSync(claudeMdPath, "utf8");
+      const existingProfile = readProfileFromBlock(content);
+      const effectiveProfile = profile !== undefined ? profile : existingProfile;
+      const profileChanged = profile !== undefined && profile !== existingProfile;
       if (isStaleRoutingBlock(content)) {
-        content = replaceRoutingBlock(content);
+        content = replaceRoutingBlock(content, effectiveProfile);
         writeFileSync(claudeMdPath, content);
         touchedFiles.push(CLAUDE_MD);
-        console.log(`  Upgraded routing block to v${CURRENT_BLOCK_VERSION}.`);
+        console.log(`  Upgraded routing block to v${CURRENT_BLOCK_VERSION}${effectiveProfile ? ` (profile: ${effectiveProfile})` : ""}.`);
+      } else if (profileChanged) {
+        // Block is current version but profile marker needs updating.
+        content = replaceRoutingBlock(content, effectiveProfile);
+        writeFileSync(claudeMdPath, content);
+        touchedFiles.push(CLAUDE_MD);
+        console.log(`  Updated profile in routing block: ${existingProfile ?? "(none)"} → ${effectiveProfile ?? "(none)"}.`);
       } else if (!content.includes(BLOCK_START) && content.includes(OLD_REFERENCE_LINE)) {
-        content = content.replace(OLD_REFERENCE_LINE, ROUTING_BLOCK);
+        content = content.replace(OLD_REFERENCE_LINE, buildRoutingBlock(effectiveProfile));
         writeFileSync(claudeMdPath, content);
         touchedFiles.push(CLAUDE_MD);
         console.log("  Upgraded v0.4 reference to routing block.");
@@ -117,7 +218,10 @@ export function init(projectRoot, options = {}) {
       }
 
       console.log("\n  Running enforcement check on agents/skills...");
-      const results = fix(projectRoot);
+      // Read profile from the (potentially just-updated) CLAUDE.md so the
+      // overlay keyword set is honored when injecting frontmatter.
+      const activeProfile = readProjectProfile(projectRoot);
+      const results = fix(projectRoot, { profile: activeProfile });
       printFixResults(results, false);
       for (const f of results.fixed) touchedFiles.push(f.file);
       stageFiles(projectRoot, touchedFiles);
@@ -128,6 +232,12 @@ export function init(projectRoot, options = {}) {
 
   const mode = soft ? "soft" : "enforcement";
   console.log(`  Mode: ${mode}`);
+  if (typeof profile === "string") {
+    console.log(`  Profile: ${profile} — keyword overlay activated for inference (see templates/profiles/${profile}.md).`);
+    if (soft) {
+      console.log(`  Note: soft mode skips agent install. Run \`npx better-model audit --fix\` later to apply ${profile} keywords to your agents.`);
+    }
+  }
 
   // Ensure docs directory exists
   const docsDir = status.docsDir;
@@ -148,26 +258,28 @@ export function init(projectRoot, options = {}) {
 
   // Add routing block to CLAUDE.md
   const claudeMdPath = join(projectRoot, CLAUDE_MD);
+  const initialBlock = buildRoutingBlock(profile ?? null);
   if (existsSync(claudeMdPath)) {
     let content = readFileSync(claudeMdPath, "utf8");
     if (isStaleRoutingBlock(content)) {
-      // Upgrade older routing block (v0.5.x or v0.6.x) → current block
-      content = replaceRoutingBlock(content);
+      // Upgrade older routing block (v0.5.x / v0.6.x / v0.7.x) → current block.
+      // Preserve any existing profile unless the caller passed an explicit one.
+      content = replaceRoutingBlock(content, profile);
       writeFileSync(claudeMdPath, content);
       console.log(`  Upgraded routing block to v${CURRENT_BLOCK_VERSION} in ${CLAUDE_MD}`);
     } else if (content.includes(BLOCK_START)) {
       // Already has current block — skip
     } else if (content.includes(OLD_REFERENCE_LINE)) {
       // Upgrade v0.4.x single-line reference → current block
-      content = content.replace(OLD_REFERENCE_LINE, ROUTING_BLOCK);
+      content = content.replace(OLD_REFERENCE_LINE, initialBlock);
       writeFileSync(claudeMdPath, content);
       console.log(`  Upgraded v0.4 reference to routing block in ${CLAUDE_MD}`);
     } else if (!content.includes(REFERENCE_MARKER)) {
-      writeFileSync(claudeMdPath, content.trimEnd() + "\n\n" + ROUTING_BLOCK + "\n");
+      writeFileSync(claudeMdPath, content.trimEnd() + "\n\n" + initialBlock + "\n");
       console.log(`  Added routing block to ${CLAUDE_MD}`);
     }
   } else {
-    writeFileSync(claudeMdPath, ROUTING_BLOCK + "\n");
+    writeFileSync(claudeMdPath, initialBlock + "\n");
     console.log(`  Created ${CLAUDE_MD} with routing block`);
   }
   touchedFiles.push(CLAUDE_MD);
@@ -189,8 +301,11 @@ export function init(projectRoot, options = {}) {
       }
     }
 
-    // Inject model frontmatter into any other agents/skills
-    const results = fix(projectRoot);
+    // Inject model frontmatter into any other agents/skills.
+    // Read profile from the just-written CLAUDE.md so blockchain overlay
+    // keywords (if active) are honored during enforcement.
+    const activeProfile = readProjectProfile(projectRoot);
+    const results = fix(projectRoot, { profile: activeProfile });
     if (results.fixed.length > 0 || results.skipped.length > 0) {
       console.log("\n  Enforcement — injecting model frontmatter:");
       printFixResults(results, false);
@@ -229,6 +344,58 @@ function printPackageManagerHint(projectRoot) {
   console.log(`    ${dlxCmd} better-model@latest init`);
   console.log(`  to avoid npm warnings on pnpm-style .npmrc keys`);
   console.log(`  (npm 12 will reject them — see https://pnpm.io/settings).`);
+}
+
+/**
+ * Parse CLI arguments for the `init` subcommand. Mirrors `parseStatsArgs`
+ * in `src/stats.js` so the two parsers behave consistently (space/equals
+ * value forms, friendly error messages, unknown flag rejection).
+ *
+ * @param {string[]} argv — argv slice AFTER the "init" command word
+ * @returns {{ok:true, opts:{soft:boolean, profile?:string}}|{ok:false, error:string}}
+ */
+export function parseInitArgs(argv) {
+  const opts = { soft: false };
+  let profileSeen = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--soft") {
+      opts.soft = true;
+      continue;
+    }
+    if (a === "--profile") {
+      if (profileSeen) {
+        return { ok: false, error: "Duplicate `--profile` flag. Pass only one profile per `init` invocation." };
+      }
+      const v = argv[++i];
+      if (v === undefined || v.startsWith("--")) {
+        return { ok: false, error: "Missing value for `--profile`. Try `--profile blockchain`." };
+      }
+      if (!VALID_PROFILE_RE.test(v)) {
+        return { ok: false, error: `Invalid \`--profile\` value: \`${v}\` — must be a lowercase ASCII slug (a-z, 0-9, hyphen).` };
+      }
+      opts.profile = v;
+      profileSeen = true;
+      continue;
+    }
+    if (a.startsWith("--profile=")) {
+      if (profileSeen) {
+        return { ok: false, error: "Duplicate `--profile` flag. Pass only one profile per `init` invocation." };
+      }
+      const v = a.slice("--profile=".length);
+      if (v === "") {
+        return { ok: false, error: "Missing value for `--profile`. Try `--profile=blockchain`." };
+      }
+      if (!VALID_PROFILE_RE.test(v)) {
+        return { ok: false, error: `Invalid \`--profile\` value: \`${v}\` — must be a lowercase ASCII slug (a-z, 0-9, hyphen).` };
+      }
+      opts.profile = v;
+      profileSeen = true;
+      continue;
+    }
+    return { ok: false, error: `Unknown flag \`${a}\`. Run \`better-model --help\` for usage.` };
+  }
+  return { ok: true, opts };
 }
 
 /**
