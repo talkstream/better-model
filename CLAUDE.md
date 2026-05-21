@@ -103,7 +103,7 @@ Opus 4.7 specifically honours `low`/`medium` effort more literally than prior mo
 - Publish without testing on all three Node versions (18, 20, 22)
 
 <!-- better-model:start -->
-<!-- better-model block version: 0.7 -->
+<!-- better-model block version: 0.10 -->
 ## Model Routing (better-model)
 
 **CRITICAL**: When spawning subagents via the Agent tool, ALWAYS set the `model` parameter (and `effort` for Sonnet/Opus — Haiku 4.5 does not support effort):
