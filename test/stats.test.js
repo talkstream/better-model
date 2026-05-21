@@ -12,6 +12,7 @@ import {
   normalizeMainModel,
   readJsonl,
   extractSubagentModels,
+  extractSubagentDispatches,
   extractMainAgentModel,
   aggregateFiles,
   percentages,
@@ -19,6 +20,8 @@ import {
   formatJson,
   runStats,
   parseStatsArgs,
+  loadProjectAgents,
+  computeExpectedModel,
 } from "../src/stats.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -641,5 +644,319 @@ describe("stats — resolveProjectDir cwd-fallback", () => {
     );
     const dir = resolveProjectDir("/Users/never/seen", tmp);
     assert.equal(dir, null);
+  });
+});
+
+describe("stats — extractSubagentDispatches", () => {
+  // T-D1: returns full dispatch info
+  it("returns subagent_type and description alongside model", () => {
+    const r = agentRec({ model: "sonnet" });
+    const d = extractSubagentDispatches(r);
+    assert.equal(d.length, 1);
+    assert.equal(d[0].model, "sonnet");
+    assert.equal(d[0].subagent_type, "Explore");
+    assert.equal(d[0].description, "x");
+  });
+
+  // T-D2: tolerates missing subagent_type/description (defensive defaults)
+  it("defaults missing subagent_type and description to empty strings", () => {
+    const r = {
+      type: "assistant",
+      isSidechain: false,
+      message: {
+        model: "claude-opus-4-7",
+        content: [{ type: "tool_use", id: "x", name: "Agent", input: { model: "opus" } }],
+      },
+    };
+    const d = extractSubagentDispatches(r);
+    assert.equal(d[0].model, "opus");
+    assert.equal(d[0].subagent_type, "");
+    assert.equal(d[0].description, "");
+  });
+
+  // T-D3: extractSubagentModels remains backward compatible
+  it("extractSubagentModels still returns model strings only", () => {
+    const r = agentRec({ model: "haiku" });
+    assert.deepEqual(extractSubagentModels(r), ["haiku"]);
+  });
+});
+
+describe("stats — loadProjectAgents + computeExpectedModel", () => {
+  let tmp;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "bm-stats-agents-"));
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  // T-A1: loads model from frontmatter
+  it("loads agent model from frontmatter", () => {
+    const agentsDir = join(tmp, ".claude", "agents");
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(
+      join(agentsDir, "code-reviewer.md"),
+      "---\ndescription: Code review agent\nmodel: sonnet\neffort: high\n---\nbody\n"
+    );
+    writeFileSync(
+      join(agentsDir, "haiku-explorer.md"),
+      "---\ndescription: Read-only explorer\nmodel: haiku\n---\nbody\n"
+    );
+    const map = loadProjectAgents(tmp);
+    assert.equal(map.size, 2);
+    assert.equal(map.get("code-reviewer"), "sonnet");
+    assert.equal(map.get("haiku-explorer"), "haiku");
+  });
+
+  // T-A2: skips agents without model
+  it("skips agents without model frontmatter", () => {
+    const agentsDir = join(tmp, ".claude", "agents");
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(join(agentsDir, "user-agent.md"), "---\ndescription: User agent\n---\nbody\n");
+    const map = loadProjectAgents(tmp);
+    assert.equal(map.size, 0);
+  });
+
+  // T-A3: empty Map for missing dir
+  it("returns empty Map when .claude/agents missing", () => {
+    const map = loadProjectAgents(tmp);
+    assert.equal(map.size, 0);
+  });
+
+  // T-A4: tolerates full model IDs in frontmatter
+  it("normalizes full model IDs to short names", () => {
+    const agentsDir = join(tmp, ".claude", "agents");
+    mkdirSync(agentsDir, { recursive: true });
+    writeFileSync(
+      join(agentsDir, "weird.md"),
+      "---\ndescription: x\nmodel: claude-opus-4-7\n---\nbody\n"
+    );
+    const map = loadProjectAgents(tmp);
+    assert.equal(map.get("weird"), "opus");
+  });
+
+  // T-A5: computeExpectedModel prefers frontmatter over inference
+  it("computeExpectedModel prefers frontmatter over inference", () => {
+    const agents = new Map([["code-reviewer", "sonnet"]]);
+    // Description contains "review" → inferModel returns opus, but frontmatter wins
+    const got = computeExpectedModel("code-reviewer", "Round 2 review", agents);
+    assert.equal(got.model, "sonnet");
+    assert.equal(got.source, "frontmatter");
+  });
+
+  // T-A6: computeExpectedModel falls back to inference when no frontmatter match
+  it("computeExpectedModel falls back to inference when subagent unknown", () => {
+    const agents = new Map();
+    const got = computeExpectedModel("code-reviewer", "Round 2 review", agents);
+    assert.equal(got.model, "opus");
+    assert.equal(got.source, "inference");
+  });
+
+  // T-A7: computeExpectedModel works with null projectAgents (--all-projects)
+  it("computeExpectedModel treats null projectAgents as inference-only", () => {
+    const got = computeExpectedModel("Explore", "Find usages", null);
+    assert.equal(got.model, "haiku");
+    assert.equal(got.source, "inference");
+  });
+});
+
+describe("stats — by-type aggregation", () => {
+  let tmp;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "bm-stats-bytype-"));
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  // T-B1: aggregator populates byType with model distribution
+  it("populates byType with per-subagent_type model counts", async () => {
+    const cwd = "/test/proj-bt";
+    const file = writeSession(tmp, cwd, "s1", [
+      agentRec({ model: "sonnet" }),
+      agentRec({ model: "sonnet", ts: "2026-05-09T11:00:00.000Z" }),
+      agentRec({ model: "opus", ts: "2026-05-09T12:00:00.000Z" }),
+    ]);
+    const from = new Date("2026-05-05T00:00:00.000Z");
+    const to = new Date("2026-05-12T12:00:00.000Z");
+    const agg = await aggregateFiles([file], from, to, { projectAgents: null });
+    assert.equal(agg.byType.size, 1);
+    const row = agg.byType.get("Explore");
+    assert.equal(row.total, 3);
+    assert.equal(row.models.sonnet, 2);
+    assert.equal(row.models.opus, 1);
+    assert.equal(row.models.haiku, 0);
+  });
+
+  // T-B2: deviation counted against inference when no projectAgents
+  it("counts deviations against inference engine when no project agents", async () => {
+    // Explore agent → inferModel returns haiku, but session used sonnet ×2
+    const cwd = "/test/proj-bt2";
+    const file = writeSession(tmp, cwd, "s1", [
+      agentRec({ model: "sonnet" }),
+      agentRec({ model: "sonnet", ts: "2026-05-09T11:00:00.000Z" }),
+    ]);
+    const agg = await aggregateFiles(
+      [file],
+      new Date("2026-05-05T00:00:00.000Z"),
+      new Date("2026-05-12T12:00:00.000Z"),
+      { projectAgents: null }
+    );
+    const row = agg.byType.get("Explore");
+    assert.equal(row.deviations, 2);
+    assert.equal(row.expectationSource, "inference");
+  });
+
+  // T-B3: frontmatter expectation overrides inference
+  it("counts deviations against frontmatter when projectAgents provided", async () => {
+    // Frontmatter says Explore → sonnet (matching session reality); zero deviation
+    const cwd = "/test/proj-bt3";
+    const file = writeSession(tmp, cwd, "s1", [
+      agentRec({ model: "sonnet" }),
+      agentRec({ model: "sonnet", ts: "2026-05-09T11:00:00.000Z" }),
+    ]);
+    const projectAgents = new Map([["Explore", "sonnet"]]);
+    const agg = await aggregateFiles(
+      [file],
+      new Date("2026-05-05T00:00:00.000Z"),
+      new Date("2026-05-12T12:00:00.000Z"),
+      { projectAgents }
+    );
+    const row = agg.byType.get("Explore");
+    assert.equal(row.deviations, 0);
+    assert.equal(row.expectationSource, "frontmatter");
+  });
+
+  // T-B5: empty subagent_type bucketed as "(empty)"
+  it("buckets dispatches with missing subagent_type under '(empty)'", async () => {
+    const r = {
+      type: "assistant",
+      isSidechain: false,
+      timestamp: "2026-05-09T10:00:00.000Z",
+      message: {
+        model: "claude-opus-4-7",
+        content: [{ type: "tool_use", id: "x", name: "Agent", input: { model: "sonnet" } }],
+      },
+    };
+    const file = join(tmp, "session.jsonl");
+    writeFileSync(file, JSON.stringify(r) + "\n");
+    const agg = await aggregateFiles(
+      [file],
+      new Date("2026-05-05T00:00:00.000Z"),
+      new Date("2026-05-12T12:00:00.000Z"),
+      { projectAgents: null }
+    );
+    assert.ok(agg.byType.has("(empty)"));
+    assert.equal(agg.byType.get("(empty)").total, 1);
+  });
+
+  // T-B6: row with only unknown dispatches yields "none" expectation_source in JSON
+  it("emits expectation_source 'none' when row has only unknown-model dispatches", async () => {
+    const cwd = "/test/proj-only-unknown";
+    const file = writeSession(tmp, cwd, "s1", [agentRec({ model: null })]);
+    const agg = await aggregateFiles(
+      [file],
+      new Date("2026-05-05T00:00:00.000Z"),
+      new Date("2026-05-12T12:00:00.000Z"),
+      { projectAgents: null }
+    );
+    const result = {
+      scope: "test", windowDays: 7,
+      fromIso: "x", toIso: "y", sessions: 1,
+      mainCounts: { opus: 0, sonnet: 0, haiku: 0, other: 0 }, mainTotal: 0,
+      subagentCounts: agg.subagentCounts, subagentCalls: 1,
+      subagentPct: { sonnet: 0, opus: 0, haiku: 0 },
+      byType: agg.byType,
+    };
+    const parsed = JSON.parse(formatJson(result));
+    assert.equal(parsed.subagent_dispatch.by_type.Explore.expectation_source, "none");
+  });
+
+  // T-B4: unknown models excluded from deviation calc
+  it("does not count 'unknown' model dispatches as deviations", async () => {
+    const cwd = "/test/proj-bt4";
+    const file = writeSession(tmp, cwd, "s1", [
+      agentRec({ model: null }), // missing input.model → bucketed as unknown
+      agentRec({ model: "sonnet", ts: "2026-05-09T11:00:00.000Z" }),
+    ]);
+    const agg = await aggregateFiles(
+      [file],
+      new Date("2026-05-05T00:00:00.000Z"),
+      new Date("2026-05-12T12:00:00.000Z"),
+      { projectAgents: null }
+    );
+    const row = agg.byType.get("Explore");
+    assert.equal(row.total, 2);
+    assert.equal(row.models.unknown, 1);
+    // Only sonnet dispatch is compared; Explore + "x" desc → expected haiku;
+    // 1 sonnet vs expected haiku = 1 deviation. unknown doesn't add.
+    assert.equal(row.deviations, 1);
+  });
+});
+
+describe("stats — formatters with by-type", () => {
+  function baseResult(overrides = {}) {
+    return {
+      scope: "test",
+      windowDays: 7,
+      fromIso: "2026-05-05T00:00:00.000Z",
+      toIso: "2026-05-12T12:00:00.000Z",
+      sessions: 1,
+      mainCounts: { opus: 10, sonnet: 0, haiku: 0, other: 0 },
+      mainTotal: 10,
+      subagentCounts: { opus: 0, sonnet: 5, haiku: 1, unknown: 0 },
+      subagentCalls: 6,
+      subagentPct: { sonnet: 5 / 6, opus: 0, haiku: 1 / 6 },
+      byType: new Map([
+        ["Explore", { total: 3, deviations: 3, models: { sonnet: 3, opus: 0, haiku: 0, unknown: 0 }, expectationSource: "inference" }],
+        ["code-reviewer", { total: 2, deviations: 0, models: { sonnet: 2, opus: 0, haiku: 0, unknown: 0 }, expectationSource: "frontmatter" }],
+        ["haiku-explorer", { total: 1, deviations: 0, models: { sonnet: 0, opus: 0, haiku: 1, unknown: 0 }, expectationSource: "frontmatter" }],
+      ]),
+      ...overrides,
+    };
+  }
+
+  // T-F1: text formatter renders by-type section sorted by total desc
+  it("formatText renders by-type table sorted by total dispatches", () => {
+    const out = formatText(baseResult());
+    const idxExplore = out.indexOf("Explore");
+    const idxReviewer = out.indexOf("code-reviewer");
+    const idxHaiku = out.indexOf("haiku-explorer");
+    assert.ok(idxExplore > 0, "Explore in output");
+    assert.ok(idxReviewer > 0, "code-reviewer in output");
+    assert.ok(idxHaiku > 0, "haiku-explorer in output");
+    // Explore (3) before code-reviewer (2) before haiku-explorer (1)
+    assert.ok(idxExplore < idxReviewer);
+    assert.ok(idxReviewer < idxHaiku);
+    assert.ok(out.includes("Subagent dispatch by type"));
+  });
+
+  // T-F2: text formatter omits by-type section when empty
+  it("formatText omits by-type section when byType is empty", () => {
+    const r = baseResult({ byType: new Map() });
+    const out = formatText(r);
+    assert.ok(!out.includes("Subagent dispatch by type"));
+  });
+
+  // T-F3: JSON formatter exposes subagent_dispatch.by_type
+  it("formatJson includes subagent_dispatch.by_type with deviation_rate", () => {
+    const out = formatJson(baseResult());
+    const parsed = JSON.parse(out);
+    assert.ok(parsed.subagent_dispatch.by_type);
+    assert.equal(parsed.subagent_dispatch.by_type.Explore.total, 3);
+    assert.equal(parsed.subagent_dispatch.by_type.Explore.deviations, 3);
+    assert.equal(parsed.subagent_dispatch.by_type.Explore.deviation_rate, 1);
+    assert.equal(parsed.subagent_dispatch.by_type.Explore.expectation_source, "inference");
+    assert.equal(parsed.subagent_dispatch.by_type["code-reviewer"].expectation_source, "frontmatter");
+    // Keys are sorted alphabetically for deterministic output
+    const keys = Object.keys(parsed.subagent_dispatch.by_type);
+    assert.deepEqual(keys, [...keys].sort());
+  });
+
+  // T-F4: JSON formatter emits empty object when byType empty
+  it("formatJson emits empty object for empty byType", () => {
+    const out = formatJson(baseResult({ byType: new Map() }));
+    const parsed = JSON.parse(out);
+    assert.deepEqual(parsed.subagent_dispatch.by_type, {});
   });
 });

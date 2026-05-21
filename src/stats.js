@@ -5,11 +5,13 @@ import {
   readSync,
   closeSync,
   readdirSync,
+  readFileSync,
   statSync,
 } from "node:fs";
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
 import { homedir as osHomedir } from "node:os";
+import { inferModel, parseFrontmatter } from "./fix.js";
 
 /**
  * README target distribution for subagent dispatch — pinned to the README at
@@ -152,28 +154,102 @@ export async function* readJsonl(filePath) {
 }
 
 /**
- * Extract subagent dispatch model strings from a single record.
- * Returns "unknown" for Agent blocks without input.model. Returns [] for
- * sidechain, non-assistant, or content-less records.
+ * Extract subagent dispatch details from a single record. Returns one entry
+ * per Agent tool_use block: {model, subagent_type, description}. `model` is
+ * "unknown" if `input.model` is missing. `subagent_type` is "" if missing.
+ * Returns [] for sidechain, non-assistant, or content-less records.
  * @param {object} record
- * @returns {string[]}
+ * @returns {Array<{model:string, subagent_type:string, description:string}>}
  */
-export function extractSubagentModels(record) {
+export function extractSubagentDispatches(record) {
   if (!record || record.type !== "assistant") return [];
   if (record.isSidechain === true) return [];
   const content = record.message && Array.isArray(record.message.content)
     ? record.message.content
     : null;
   if (!content) return [];
-  const models = [];
+  const out = [];
   for (const block of content) {
     if (!block || block.type !== "tool_use" || block.name !== "Agent") continue;
-    const m = block.input && typeof block.input.model === "string"
-      ? block.input.model
-      : "unknown";
-    models.push(m);
+    const input = block.input || {};
+    const model = typeof input.model === "string" ? input.model : "unknown";
+    const subagent_type = typeof input.subagent_type === "string" ? input.subagent_type : "";
+    const description = typeof input.description === "string" ? input.description : "";
+    out.push({ model, subagent_type, description });
   }
-  return models;
+  return out;
+}
+
+/**
+ * Extract subagent dispatch model strings from a single record. Thin wrapper
+ * over extractSubagentDispatches for callers that only care about models.
+ * Kept for API stability — existing tests and aggregateFiles use this shape.
+ * @param {object} record
+ * @returns {string[]}
+ */
+export function extractSubagentModels(record) {
+  return extractSubagentDispatches(record).map((d) => d.model);
+}
+
+/**
+ * Load per-agent expected-model map from `<projectRoot>/.claude/agents/*.md`.
+ * Returns Map<agentName, normalizedModel> where normalizedModel is one of
+ * "opus" | "sonnet" | "haiku" extracted from frontmatter. Agents without a
+ * model: field are omitted. Returns empty Map if dir missing/unreadable.
+ *
+ * Used to build the expected-model side of deviation detection: when a user
+ * project has `.claude/agents/code-reviewer.md` with `model: sonnet` in
+ * frontmatter, dispatches to `code-reviewer` are expected to be sonnet, not
+ * what inferModel() infers from keyword.
+ *
+ * @param {string} projectRoot — absolute path
+ * @returns {Map<string, string>}
+ */
+export function loadProjectAgents(projectRoot) {
+  const result = new Map();
+  const agentsDir = join(projectRoot, ".claude", "agents");
+  if (!existsSync(agentsDir)) return result;
+  let entries;
+  try {
+    entries = readdirSync(agentsDir, { withFileTypes: true });
+  } catch {
+    return result;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    const name = entry.name.replace(/\.md$/, "");
+    let content;
+    try {
+      content = readFileSync(join(agentsDir, entry.name), "utf8");
+    } catch {
+      continue;
+    }
+    const { fields } = parseFrontmatter(content);
+    if (typeof fields.model !== "string") continue;
+    // Normalize to short name — frontmatter is "opus"/"sonnet"/"haiku" already
+    // per fix.js conventions, but tolerate full IDs defensively.
+    const short = normalizeFrontmatterModel(fields.model);
+    if (short) result.set(name, short);
+  }
+  return result;
+}
+
+/**
+ * Compute the expected model for a dispatch. Prefers `projectAgents` if the
+ * subagent_type matches a loaded agent's frontmatter; falls back to inferModel
+ * on the (name, description) pair.
+ *
+ * @param {string} subagent_type
+ * @param {string} description
+ * @param {Map<string,string>|null} projectAgents — null in --all-projects mode
+ * @returns {{model:string, source:"frontmatter"|"inference"}}
+ */
+export function computeExpectedModel(subagent_type, description, projectAgents) {
+  if (projectAgents && projectAgents.has(subagent_type)) {
+    return { model: projectAgents.get(subagent_type), source: "frontmatter" };
+  }
+  const inferred = inferModel(subagent_type, description);
+  return { model: inferred.model, source: "inference" };
 }
 
 /**
@@ -191,21 +267,28 @@ export function extractMainAgentModel(record) {
 }
 
 /**
- * Aggregate across files within [from, to].
+ * Aggregate across files within [from, to]. Optionally collects per-subagent_type
+ * breakdown when `projectAgents` is provided (current-project mode) or
+ * `expectationSource: "inference-only"` is set (--all-projects mode).
+ *
  * @param {string[]} files
  * @param {Date} from
  * @param {Date} to
+ * @param {{projectAgents?: Map<string,string>|null, computeByType?: boolean}} [opts]
  * @returns {Promise<{
  *   mainCounts: {opus:number, sonnet:number, haiku:number, other:number},
  *   subagentCounts: {opus:number, sonnet:number, haiku:number, unknown:number},
+ *   byType: Map<string, {total:number, deviations:number, models:{opus:number, sonnet:number, haiku:number, unknown:number}, expectationSource:string}>,
  *   sessions: number,
  *   linesParsed: number,
  *   linesFailed: number,
  * }>}
  */
-export async function aggregateFiles(files, from, to) {
+export async function aggregateFiles(files, from, to, opts = {}) {
   const mainCounts = { opus: 0, sonnet: 0, haiku: 0, other: 0 };
   const subagentCounts = { opus: 0, sonnet: 0, haiku: 0, unknown: 0 };
+  const byType = new Map();
+  const { projectAgents = null, computeByType = true } = opts;
   let linesParsed = 0;
   let linesFailed = 0;
   for (const file of files) {
@@ -222,19 +305,63 @@ export async function aggregateFiles(files, from, to) {
       if (ts < from || ts > to) continue;
       const main = extractMainAgentModel(record);
       if (main && main in mainCounts) mainCounts[main]++;
-      for (const m of extractSubagentModels(record)) {
+      for (const dispatch of extractSubagentDispatches(record)) {
+        const m = dispatch.model;
         if (m in subagentCounts) subagentCounts[m]++;
         else subagentCounts.unknown++;
+        if (!computeByType) continue;
+        addToByType(byType, dispatch, projectAgents);
       }
     }
   }
   return {
     mainCounts,
     subagentCounts,
+    byType,
     sessions: files.length,
     linesParsed,
     linesFailed,
   };
+}
+
+/**
+ * Update the byType map for one dispatch. Tracks per-type total, model
+ * distribution, and deviations (actual model != expected model). Skips
+ * deviation calculation when actual model is "unknown" (no input.model on
+ * the Agent call — comparison would be meaningless).
+ *
+ * `expectationSource` is recorded per type: "frontmatter" when at least one
+ * dispatch matched a project-agent frontmatter; "inference" otherwise.
+ * "mixed" if both happened (rare — would indicate inconsistent fixture).
+ *
+ * @param {Map<string,object>} byType
+ * @param {{model:string, subagent_type:string, description:string}} dispatch
+ * @param {Map<string,string>|null} projectAgents
+ */
+function addToByType(byType, dispatch, projectAgents) {
+  const key = dispatch.subagent_type || "(empty)";
+  let row = byType.get(key);
+  if (!row) {
+    row = {
+      total: 0,
+      deviations: 0,
+      models: { opus: 0, sonnet: 0, haiku: 0, unknown: 0 },
+      expectationSource: null,
+    };
+    byType.set(key, row);
+  }
+  row.total++;
+  const bucket = dispatch.model in row.models ? dispatch.model : "unknown";
+  row.models[bucket]++;
+  // Deviation only computed for dispatches with a real model (not "unknown").
+  if (bucket === "unknown") return;
+  const expected = computeExpectedModel(dispatch.subagent_type, dispatch.description, projectAgents);
+  if (expected.model !== dispatch.model) row.deviations++;
+  if (row.expectationSource === null) {
+    row.expectationSource = expected.source;
+  } else if (row.expectationSource !== expected.source) {
+    row.expectationSource = "mixed";
+  }
 }
 
 /**
@@ -294,6 +421,26 @@ export function formatText(result) {
       const signed = `${sign}${num}`.padStart(6);
       lines.push(`  ${cmp.mark} ${capitalize(m).padEnd(8)} ${signed} pp`);
     }
+    if (result.byType && result.byType.size > 0) {
+      lines.push("");
+      lines.push("Subagent dispatch by type (deviations vs frontmatter or inference):");
+      const rows = [...result.byType.entries()].sort((a, b) => b[1].total - a[1].total);
+      const maxNameLen = Math.max(...rows.map(([name]) => name.length), 4);
+      const header = `  ${"type".padEnd(maxNameLen)}  total  dev   Sonnet%   Opus%  Haiku%`;
+      lines.push(header);
+      for (const [name, row] of rows) {
+        const routed = row.models.sonnet + row.models.opus + row.models.haiku;
+        const sPct = routed > 0 ? (100 * row.models.sonnet / routed).toFixed(0) : "—";
+        const oPct = routed > 0 ? (100 * row.models.opus / routed).toFixed(0) : "—";
+        const hPct = routed > 0 ? (100 * row.models.haiku / routed).toFixed(0) : "—";
+        lines.push(
+          `  ${name.padEnd(maxNameLen)}  ${String(row.total).padStart(5)}  ${String(row.deviations).padStart(3)}  ${sPct.padStart(7)}  ${oPct.padStart(6)}  ${hPct.padStart(6)}`
+        );
+      }
+      lines.push("");
+      lines.push("  Deviations = actual model ≠ expected (frontmatter when available, else inferred from agent name + description).");
+      lines.push("  Most deviations are intentional caller-side overrides matching your preference — see README \"Per-subagent_type breakdown\" before tuning.");
+    }
   }
   return lines.join("\n");
 }
@@ -323,9 +470,37 @@ export function formatJson(result) {
         opus: round3(result.subagentPct.opus),
         haiku: round3(result.subagentPct.haiku),
       },
+      by_type: serializeByType(result.byType),
     },
     readme_target: README_TARGET,
   }, null, 2);
+}
+
+/**
+ * Convert byType Map to plain object for JSON output. Keys sorted alphabetically
+ * for deterministic output (helpful for diffs / CI fixtures).
+ * @param {Map<string,object>|null|undefined} byType
+ * @returns {Record<string, object>}
+ */
+function serializeByType(byType) {
+  if (!byType || byType.size === 0) return {};
+  const out = {};
+  const keys = [...byType.keys()].sort();
+  for (const key of keys) {
+    const row = byType.get(key);
+    const routed = row.models.sonnet + row.models.opus + row.models.haiku;
+    out[key] = {
+      total: row.total,
+      deviations: row.deviations,
+      deviation_rate: routed > 0 ? round3(row.deviations / routed) : 0,
+      models: { ...row.models },
+      // `null` means no real-model dispatch was ever evaluated against an
+      // expectation (the row contained only "unknown" model dispatches), so
+      // neither "frontmatter" nor "inference" honestly fits — emit "none".
+      expectation_source: row.expectationSource ?? "none",
+    };
+  }
+  return out;
 }
 
 /**
@@ -410,6 +585,7 @@ export async function runStats(opts) {
 
   let files = [];
   let scope = "";
+  let projectAgents = null;
 
   if (!existsSync(projectsRoot)) {
     console.log("Claude Code logs not found. Run a session first to generate data.");
@@ -422,6 +598,9 @@ export async function runStats(opts) {
       files.push(...listSessionFiles(join(projectsRoot, entry.name)));
     }
     scope = "all projects";
+    // Cross-project agent frontmatter is unreachable: agent .md files live in
+    // each project's source tree, not under ~/.claude/projects/. by-type
+    // deviation falls back to inference-only.
   } else {
     const info = resolveProjectDirInfo(cwdAbs, homedir);
     if (!info.dir) {
@@ -433,6 +612,8 @@ export async function runStats(opts) {
     }
     files = listSessionFiles(info.dir);
     scope = cwdAbs;
+    // Load current-project agent frontmatter for by-type expectation.
+    projectAgents = loadProjectAgents(cwdAbs);
   }
 
   if (files.length === 0) {
@@ -440,7 +621,7 @@ export async function runStats(opts) {
     return 0;
   }
 
-  const agg = await aggregateFiles(files, from, to);
+  const agg = await aggregateFiles(files, from, to, { projectAgents });
   if (agg.linesParsed === 0 && agg.linesFailed > 0) {
     console.log("All session files unreadable. Schema may have changed — please file an issue with your Claude Code version.");
     return 1;
@@ -463,6 +644,7 @@ export async function runStats(opts) {
     subagentCounts: agg.subagentCounts,
     subagentCalls,
     subagentPct,
+    byType: agg.byType,
   };
 
   console.log(opts.json ? formatJson(result) : formatText(result));
@@ -531,6 +713,24 @@ function mainBucketsForDisplay(counts) {
     ["Haiku", counts.haiku],
     ["Other", counts.other],
   ].filter(([, c]) => c > 0);
+}
+
+/**
+ * Normalize a frontmatter model value to a short bucket name. Accepts both
+ * short ("opus") and full ("claude-opus-4-7") forms — `audit --fix` writes
+ * short names, but user-edited files may use full IDs.
+ * @param {string} value
+ * @returns {"opus"|"sonnet"|"haiku"|null}
+ */
+function normalizeFrontmatterModel(value) {
+  if (typeof value !== "string") return null;
+  const v = value.trim().toLowerCase();
+  if (v === "opus" || v === "sonnet" || v === "haiku") return v;
+  // Tolerate full IDs.
+  if (v.startsWith("claude-opus-")) return "opus";
+  if (v.startsWith("claude-sonnet-")) return "sonnet";
+  if (v.startsWith("claude-haiku-")) return "haiku";
+  return null;
 }
 
 function compareMark(actual, target) {

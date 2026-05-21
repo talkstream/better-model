@@ -196,7 +196,27 @@ $ npx better-model stats --all-projects # aggregate across every CC project
 $ npx better-model stats --json         # stable schema for scripts / CI
 ```
 
-The `--json` schema is stable across releases (additions only): top-level `project`, `window_days`, `from`, `to`, `sessions`, `main_agent.{total,counts}`, `subagent_dispatch.{total,counts,percentages}`, `readme_target`.
+The `--json` schema is stable across releases (additions only): top-level `project`, `window_days`, `from`, `to`, `sessions`, `main_agent.{total,counts}`, `subagent_dispatch.{total,counts,percentages,by_type}`, `readme_target`.
+
+### Per-subagent_type breakdown
+
+> **Deviation** = a dispatch where the actual `model` differs from what better-model would have expected. The expectation comes from the agent's `model:` frontmatter when present; otherwise it falls back to keyword inference from the agent's name + description.
+
+Since v0.9.0, the default `stats` output also shows what each `subagent_type` was dispatched on, alongside a `dev` count column:
+
+```
+Subagent dispatch by type (deviations vs frontmatter or inference):
+  type             total  dev   Sonnet%   Opus%  Haiku%
+  general-purpose      6    1       17      83       0
+  Explore              5    5      100       0       0
+  code-reviewer        4    0        0     100       0
+```
+
+*(Illustrative output — the rows you see depend on which subagent types your project actually dispatched in the window.)*
+
+Most deviations are **intentional caller-side overrides** matching your personal preference (e.g., your CLAUDE.md may say "Explore subagents should run on Sonnet, not Haiku" — that's a deviation against inference, but it's your call). The column is there so you can spot patterns, not so you panic. If a row is 100% deviation across many calls, that's a signal worth investigating; one-off deviations are usually fine.
+
+In `--json`, each type appears under `subagent_dispatch.by_type` with `total`, `deviations`, `deviation_rate`, `models` (object with raw counts under keys `opus` / `sonnet` / `haiku` / `unknown`), and `expectation_source` (`"frontmatter"`, `"inference"`, `"mixed"`, or `"none"` — the last for rows that contained only `unknown` models).
 
 ### What better-model controls (and what it doesn't)
 
@@ -205,10 +225,20 @@ The `--json` schema is stable across releases (additions only): top-level `proje
 | `model` (and `effort` for Opus/Sonnet) in every `Agent()` subagent dispatch — via the routing block hint in `CLAUDE.md` | Your **main agent** model — that's your Claude Code setting |
 | Two ready-to-use subagent agents: `sonnet-coder`, `haiku-explorer` | Your **main agent** effort — same |
 | `model:` frontmatter injection in `.claude/agents/` and `.claude/skills/` (via `audit --fix`) | When the main agent decides to spawn a subagent (the main agent's call) |
-| | Mid-session model switching — Claude Code's harness reserves `/model` for the user |
+| Per-subagent_type deviation reporting in `stats` so you can see when the main agent overrides the routing hint | Mid-session model switching — Claude Code's harness reserves `/model` for the user |
 | | Whether the main agent respects the routing block hint (it's a hint — sample data shows Explore subagents occasionally dispatched on Sonnet when the agent judged the task needed more rigor) |
+| | Caller-side `model: ...` written directly into an `Agent()` call by the main agent (often intentional, matching your CLAUDE.md preferences) |
+| | The `claude agents --model <id> --effort <lvl>` CLI flags (added in Claude Code v2.1.142, 2026-05-14) — these override the routing block at invocation time |
 
 **Where savings actually come from.** In Plan Mode on a typical task, the main agent runs on Opus + xhigh end-to-end and spawns 1–3 Explore subagents — better-model can route those to Haiku, saving ~5–10% of the session cost. In `/loop` autonomous mode the main agent spawns more variety (`haiku-explorer`, `sonnet-coder`, `code-reviewer`, `architect`), and savings rise to the ~15–30% range consistent with the field data above. better-model shines when your workflow is subagent-heavy; if you spend all session in main-agent direct edits, the savings are necessarily smaller.
+
+**A note on code review tier.** The inference engine routes any agent whose name or description contains `review` to Opus + xhigh — that's our default because most reviews involve cross-file context and the gap from Sonnet matters. If your reviews are typically single-file and you prefer Sonnet, add one line to your global `~/.claude/CLAUDE.md` (the file Claude Code reads on every session) to opt out:
+
+```
+Agent() calls with subagent_type=code-reviewer — model: "sonnet", effort: "high"
+```
+
+`stats` will show this as a deviation row (e.g. `code-reviewer 38 38 100% Sonnet`) — that's expected, and it confirms your preference is being honored.
 
 ## Two modes
 
@@ -270,7 +300,7 @@ The GPQA gap (20.1 points) and the SWE-bench Pro lead (64.3% vs 53.4% on Opus 4.
 1. **Default to Sonnet + medium effort** — covers ~60% of tasks.
 2. **Escalate to Opus 4.7 + `xhigh`** when the task spans 3+ files, is multi-step agentic, or needs multi-file coherence.
 3. **Escalate to Opus 4.7 + `max`** only for architecture design, security audits, and novel algorithm design.
-4. **Downgrade to Haiku + `low`** for search and pattern-matching subagents.
+4. **Downgrade to Haiku** for search and pattern-matching subagents (no `effort` field — Haiku 4.5 does not support it).
 5. **On Sonnet failure**, escalate to Opus 4.7 — don't retry Sonnet at higher effort. A stronger model at lower effort outperforms a weaker model at higher effort.
 6. **Avoid Opus 4.7 on >500K tokens** of live context — documented lost-in-the-middle regression; chunk the task or use Sonnet 4.6.
 

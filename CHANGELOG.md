@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.9.0] - 2026-05-21
+
+### New: per-subagent_type breakdown + deviation reporting in `stats`
+
+`npx better-model stats` now shows what each subagent_type was dispatched on, plus a **deviation** count: how many dispatches did *not* match the model better-model would have inferred. When the current project's `.claude/agents/*.md` includes a `model:` frontmatter for that subagent, that value becomes the expectation (frontmatter wins over keyword inference); otherwise the keyword-based `inferModel()` is the expectation. This makes routing block discipline visible without changing what the routing block actually does.
+
+```
+Subagent dispatch by type (deviations vs frontmatter or inference):
+  type             total  dev   Sonnet%   Opus%  Haiku%
+  general-purpose      6    1       17      83       0
+  Explore              5    5      100       0       0
+  code-reviewer        4    0        0     100       0
+```
+
+**Two important reads of the `dev` column**:
+1. If `dev == total` (like `Explore` above with 5/5), that's almost always an intentional caller-side preference — e.g., your global CLAUDE.md tells the main agent "use Sonnet for Explore" and better-model's keyword inference says Haiku. Both are correct; the column just makes the divergence visible.
+2. If `dev` is non-zero but well below `total`, that's the main agent making per-task judgement calls. Often fine, occasionally worth a look.
+
+`--json` schema extension (additions-only, no breaking changes): `subagent_dispatch.by_type` is a new field. Each entry has `total`, `deviations`, `deviation_rate`, `models` (raw counts per bucket), and `expectation_source` (`"frontmatter"` / `"inference"` / `"mixed"` / `"none"`). Keys are sorted alphabetically for deterministic diffs.
+
+### Why deviation detection (not override detection)
+
+A short internal spike discovered that the JSONL schema cannot tell a routing-block default apart from a caller-side override at the field level — the main agent writes `input.model` in both cases. We pivoted to **deviation detection**: instead of asking "was this an override?", ask "did this actual model match what we'd have expected?". The answer is computable without schema discriminators and surfaces the same information.
+
+### New section in README: bypass surfaces
+
+`README.md` "What better-model controls (and what it doesn't)" now explicitly names three bypass surfaces:
+1. Caller-side `input.model` written by the main agent at runtime (often intentional, matching CLAUDE.md preferences).
+2. `claude agents --model <id> --effort <lvl>` CLI flags (Claude Code v2.1.142, 2026-05-14).
+3. `/model` keystroke mid-session (Claude Code reserves this for the user).
+
+Plus a one-liner showing how to opt out of the `review` → Opus default if your code-review tasks are typically single-file and Sonnet suffices.
+
+### Tests
+
+20 new (178 → 198). Coverage matrix:
+- 3 `extractSubagentDispatches` tests (full info, defaults for missing fields, backward-compat of `extractSubagentModels`)
+- 7 `loadProjectAgents` + `computeExpectedModel` tests (frontmatter parse, missing model, missing dir, full ID normalization, frontmatter precedence, inference fallback, null projectAgents)
+- 6 by-type aggregation tests (model distribution, deviation against inference, deviation against frontmatter, `(empty)` bucket, `none` expectation source, unknown model excluded from deviations)
+- 4 formatter tests (text rendering sorted by total, omits when empty, JSON schema with `deviation_rate` and `expectation_source`, JSON emits empty object when byType empty)
+
+### What's not in v0.9.0
+
+- **Haiku keyword expansion** (`enumerate`/`survey`/`inventory`/...) — gated on Phase 3 field data after 14 days of clean v0.9.0 observability. Will ship as v0.9.1 if Phase 3 finds genuine under-routing.
+- **`code-reviewer` keyword split** — gated on Phase 3 evidence; user feedback says keep Opus default and document the opt-out (which v0.9.0 does).
+- **`--profile blockchain`** — Phase 4 work, opt-in preset for Solidity-heavy projects. Ships separately as v0.10.0 with "convenience preset, awaiting field data" framing.
+- **Hook-based defense against `claude agents --model`** — engineering-feasible (PreToolUse on Agent calls), but its own scope; defer to v0.10+ if demand emerges.
+
 ## [0.8.1] - 2026-05-12
 
 ### Docs

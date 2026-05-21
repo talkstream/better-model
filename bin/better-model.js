@@ -32,10 +32,12 @@ Commands:
   status                 Show current installation status
   audit                  Check .claude/agents/ and skills for missing model settings
   audit --fix            Auto-inject model frontmatter into agents and skills
-  stats                  Show recent Agent-call model distribution
+  stats                  Show recent Agent-call model distribution, plus
+                         per-subagent_type breakdown with deviation counts
+                         (actual model vs frontmatter/inference expectation)
   stats --days N         Window in days (default 7)
   stats --all-projects   Aggregate across all projects
-  stats --json           JSON output for scripting
+  stats --json           JSON output for scripting (includes by_type)
 
 Options:
   --help                 Show this help message
